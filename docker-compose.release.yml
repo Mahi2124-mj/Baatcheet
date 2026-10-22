@@ -2,10 +2,10 @@
 # The machine running Baatcheet then needs no source code: only these compose files, the Caddyfile and .env.
 services:
   server:
-    image: ghcr.io/YOUR_GITHUB_USER/baatcheet-server:${BAATCHEET_TAG:-latest}
+    image: ghcr.io/mahi2124-mj/baatcheet-server:${BAATCHEET_TAG:-latest}
     build: !reset null
     pull_policy: always
   web:
-    image: ghcr.io/YOUR_GITHUB_USER/baatcheet-web:${BAATCHEET_TAG:-latest}
+    image: ghcr.io/mahi2124-mj/baatcheet-web:${BAATCHEET_TAG:-latest}
     build: !reset null
     pull_policy: always

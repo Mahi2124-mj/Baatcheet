@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Baatcheet one-command installer for a fresh Ubuntu 22.04/24.04 server (e.g. Oracle Cloud Always Free).
 #
-#   curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/main/deploy/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/Mahi2124-mj/Baatcheet/main/deploy/install.sh | sudo bash
 #
 # It installs Docker, opens the firewall, downloads Baatcheet to /opt/baatcheet, creates .env with new
 # random secrets (kept on later runs), and starts everything with HTTPS for your domain.
 # Run it again any time to update to the newest code.
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/YOUR_GITHUB_USER/YOUR_REPO.git}"
+REPO="${REPO:-https://github.com/Mahi2124-mj/Baatcheet.git}"
 BRANCH="${BRANCH:-main}"
 DIR="${DIR:-/opt/baatcheet}"
 APP="$DIR"

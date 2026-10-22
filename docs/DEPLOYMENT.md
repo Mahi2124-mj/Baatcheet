@@ -17,7 +17,7 @@ A PC that stays on (4 GB+ RAM) can host Baatcheet. A Cloudflare Tunnel puts it o
 ports on the router, so it also works behind Jio / Airtel CGNAT:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/main/deploy/install-home.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Mahi2124-mj/Baatcheet/main/deploy/install-home.sh | sudo bash
 ```
 
 - Option **a**: your domain on a free Cloudflare account → a tunnel token (Zero Trust → Networks → Tunnels),
@@ -26,7 +26,7 @@ curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/main/dep
   restarts; the current one is written to `/opt/baatcheet/SITE-ADDRESS.txt`. Fine for trying it out.
 - Calls: add a free Metered TURN login (dashboard.metered.ca) so calls also connect on mobile data.
 - Group calls are off in this mode (LiveKit needs a public IP).
-- **No source code on the PC.** GitHub Actions publishes the images `ghcr.io/YOUR_GITHUB_USER/baatcheet-server`
+- **No source code on the PC.** GitHub Actions publishes the images `ghcr.io/mahi2124-mj/baatcheet-server`
   and `baatcheet-web` (amd64 + arm64) after every green run on `main`. The PC keeps only the compose files,
   `.env` (settings and secrets) and the data (database and uploaded files in Docker volumes) in `/opt/baatcheet`.
 - **Controlled from GitHub.** A `baatcheet-update` timer fetches the newest run files and images every
@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/main/dep
 On a fresh Ubuntu server (Oracle Cloud Always Free works) with your domain's A record pointing at it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/main/deploy/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Mahi2124-mj/Baatcheet/main/deploy/install.sh | sudo bash
 ```
 
 It asks for the domain, your admin e-mail and SMTP details, then installs Docker, opens the server's

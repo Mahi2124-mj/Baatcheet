@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Baatcheet on your own Linux PC (runs 24×7, no public IP or router changes needed).
 #
-#   curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/main/deploy/install-home.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/Mahi2124-mj/Baatcheet/main/deploy/install-home.sh | sudo bash
 #
 # The site goes online through a Cloudflare Tunnel: your own domain (free Cloudflare account) or, without
 # one, a free random *.trycloudflare.com address. Calls use a hosted TURN service (Metered free plan).
@@ -11,7 +11,7 @@
 # It never opens ports on your PC or router.
 set -euo pipefail
 
-RAW="${RAW:-https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/${BRANCH:-main}}"
+RAW="${RAW:-https://raw.githubusercontent.com/Mahi2124-mj/Baatcheet/${BRANCH:-main}}"
 APP="${DIR:-/opt/baatcheet}"
 
 say() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }

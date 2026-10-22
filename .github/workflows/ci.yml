@@ -163,7 +163,7 @@ jobs:
           file: server/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/YOUR_GITHUB_USER/baatcheet-server:latest,ghcr.io/YOUR_GITHUB_USER/baatcheet-server:${{ github.sha }}
+          tags: ghcr.io/mahi2124-mj/baatcheet-server:latest,ghcr.io/mahi2124-mj/baatcheet-server:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
@@ -174,7 +174,7 @@ jobs:
           file: web/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/YOUR_GITHUB_USER/baatcheet-web:latest,ghcr.io/YOUR_GITHUB_USER/baatcheet-web:${{ github.sha }}
+          tags: ghcr.io/mahi2124-mj/baatcheet-web:latest,ghcr.io/mahi2124-mj/baatcheet-web:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
@@ -182,7 +182,7 @@ jobs:
         run: |
           docker logout ghcr.io
           for i in server web; do
-            if docker manifest inspect ghcr.io/YOUR_GITHUB_USER/baatcheet-$i:latest >/dev/null; then echo "baatcheet-$i is public ✅"
+            if docker manifest inspect ghcr.io/mahi2124-mj/baatcheet-$i:latest >/dev/null; then echo "baatcheet-$i is public ✅"
             else echo "::warning::baatcheet-$i is private. GitHub → your profile → Packages → baatcheet-$i → Package settings → Change visibility → Public"; fi
           done
 
