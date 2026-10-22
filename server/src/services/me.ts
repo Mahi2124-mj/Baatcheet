@@ -9,6 +9,8 @@ export async function mePayload(userId: string) {
     id: u.id,
     email: u.email,
     emailVerified: Boolean(u.emailVerifiedAt),
+    /** A quick-login PIN is set (the PIN itself never leaves the server). */
+    hasPin: Boolean(u.pinHash),
     role: u.role,
     username: p.username,
     displayName: p.displayName,

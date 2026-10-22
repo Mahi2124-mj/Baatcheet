@@ -109,6 +109,36 @@ describe('calls', () => {
     sb.disconnect();
   });
 
+  it('deletes calls from one person’s history only', async () => {
+    const { a, b, sa, sb, convId } = await setup();
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const incoming = once(sb, 'call:incoming');
+      const start = await emitAck<{ callId: string }>(sa, 'call:start', { conversationId: convId, type: i ? 'VIDEO' : 'AUDIO' });
+      await incoming;
+      const ended = once(sa, 'call:ended');
+      sb.emit('call:reject', { callId: start.data!.callId });
+      await ended;
+      ids.push(start.data!.callId);
+    }
+    const list = async (u: typeof a) => (await u.agent.get('/api/calls').expect(200)).body.items.map((c: { id: string }) => c.id).sort();
+    expect(await list(b)).toEqual([...ids].sort());
+    // Outsiders and unknown ids: 404.
+    const c = await register(srv);
+    await c.agent.delete(`/api/calls/${ids[0]}`).expect(404);
+    await b.agent.delete(`/api/calls/${ids[0]}`).expect(200);
+    await b.agent.delete(`/api/calls/${ids[0]}`).expect(404);
+    expect(await list(b)).toEqual([ids[1]]);
+    // The caller still has both.
+    expect(await list(a)).toEqual([...ids].sort());
+    const cleared = await a.agent.delete('/api/calls').expect(200);
+    expect(cleared.body.count).toBe(2);
+    expect(await list(a)).toEqual([]);
+    expect(await list(b)).toEqual([ids[1]]);
+    sa.disconnect();
+    sb.disconnect();
+  });
+
   it('says busy when the other person is in a call', async () => {
     const { b, sa, sb, convId } = await setup();
     const c = await register(srv);

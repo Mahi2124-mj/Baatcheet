@@ -4,6 +4,7 @@ export interface Me {
   id: string;
   email: string | null;
   emailVerified: boolean;
+  hasPin: boolean;
   role: 'USER' | 'ADMIN';
   username: string;
   displayName: string;

@@ -7,6 +7,8 @@ import { enablePush, pushSupported } from '@/lib/push';
 import { useSession } from '@/lib/session';
 import type { Me } from '@/lib/types';
 import { Avatar, Button, Input, useToast } from '@/components/ui';
+import { PinFields, pinFormError } from '@/components/PinSettings';
+import { rememberLogin } from '@/lib/quickLogin';
 
 export default function Onboarding() {
   const { me, setMe } = useSession();
@@ -15,11 +17,20 @@ export default function Onboarding() {
   const [name, setName] = useState(me.displayName);
   const [bio, setBio] = useState(me.bio ?? '');
   const [busy, setBusy] = useState(false);
+  const [pin, setPin] = useState('');
+  const [repeat, setRepeat] = useState('');
   const file = useRef<HTMLInputElement>(null);
 
   async function finish() {
+    // The PIN is optional; when one is typed it must be valid before we go on.
+    const pinError = pin || repeat ? pinFormError(pin, repeat) : null;
+    if (pinError) return toast(pinError, 'error');
     setBusy(true);
     try {
+      if (pin) {
+        await api.put<Me>('/auth/pin', { pin });
+        rememberLogin(me.username, true);
+      }
       setMe(await api.patch<Me>('/users/me', { displayName: name, bio, onboarded: true }));
       if ('Notification' in window && Notification.permission === 'default') {
         // Allowing notifications also turns on push, so calls and messages arrive with no tab open.
@@ -67,6 +78,11 @@ export default function Onboarding() {
           <span className="text-sm font-medium">About (optional)</span>
           <textarea value={bio} onChange={(e) => setBio(e.target.value)} maxLength={300} className="h-20 w-full resize-none rounded-xl border border-line bg-panel-2 p-3 text-sm outline-none focus:border-accent" />
         </label>
+        <div className="space-y-2 rounded-xl border border-line p-3">
+          <p className="text-sm font-medium">Quick-login PIN <span className="font-normal text-muted">(optional)</span></p>
+          <p className="text-xs text-muted">On any phone, log in with your username and this PIN instead of the password.</p>
+          <PinFields pin={pin} repeat={repeat} onPin={setPin} onRepeat={setRepeat} />
+        </div>
         <p className="text-xs text-muted">Next, your browser may ask to show notifications — allow it to hear about calls and messages while this tab is in the background.</p>
         <Button className="w-full" loading={busy} disabled={!name.trim()} onClick={finish}>Start chatting</Button>
       </div>

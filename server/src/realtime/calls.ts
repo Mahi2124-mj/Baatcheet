@@ -241,6 +241,11 @@ export function relaySignal(userId: string, callId: string, to: string, data: Si
 export function relayMedia(userId: string, callId: string, audio: boolean, video: boolean) {
   const { c, p } = liveFor(userId, callId);
   if (p.state !== 'joined') return;
+  // A voice call where someone turned the camera on is a video call from now on (history, chat line).
+  if (video && c.type === 'AUDIO') {
+    c.type = 'VIDEO';
+    void prisma.call.update({ where: { id: c.id }, data: { type: 'VIDEO' } }).catch(() => {});
+  }
   for (const x of joined(c)) if (x.userId !== userId && x.socketId) io()?.to(x.socketId).emit('call:media', { callId, userId, audio, video });
 }
 

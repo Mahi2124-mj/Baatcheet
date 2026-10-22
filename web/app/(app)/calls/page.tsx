@@ -1,13 +1,13 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Phone, PhoneMissed, Video } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Phone, PhoneMissed, Trash2, Video } from 'lucide-react';
 import { api, errorText } from '@/lib/api';
 import { calls } from '@/lib/calls';
 import { cx, duration, timeShort } from '@/lib/format';
 import { useMe } from '@/lib/session';
 import { getState } from '@/lib/store';
 import type { CallRecord } from '@/lib/types';
-import { Avatar, Button, Empty, ErrorBox, IconButton, Skeleton, useToast } from '@/components/ui';
+import { Avatar, Button, Empty, ErrorBox, IconButton, Skeleton, useConfirm, useToast } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
 
 type Row = CallRecord & { missed: boolean; outgoing: boolean };
@@ -15,6 +15,7 @@ type Row = CallRecord & { missed: boolean; outgoing: boolean };
 export default function CallsPage() {
   const me = useMe();
   const toast = useToast();
+  const confirm = useConfirm();
   const [items, setItems] = useState<Row[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [missedOnly, setMissedOnly] = useState(false);
@@ -38,11 +39,40 @@ export default function CallsPage() {
     void load();
   }, [load]);
 
-  async function callBack(c: Row) {
+  async function remove(c: Row) {
+    // Optimistic: the row goes at once and comes back if the server refuses.
+    setItems((x) => x?.filter((y) => y.id !== c.id) ?? x);
+    try {
+      await api.delete(`/calls/${c.id}`);
+    } catch (e) {
+      toast(errorText(e), 'error');
+      void load();
+    }
+  }
+
+  async function clearAll() {
+    const ok = await confirm({
+      title: missedOnly ? 'Clear missed calls?' : 'Clear call history?',
+      text: 'They are removed from your list only; the other people still see them.',
+      confirm: 'Clear',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/calls${missedOnly ? '?missed=1' : ''}`);
+      setItems([]);
+      setCursor(null);
+      toast('Call history cleared', 'ok');
+    } catch (e) {
+      toast(errorText(e), 'error');
+    }
+  }
+
+  async function callBack(c: Row, type: Row['type'] = c.type) {
     const conv = getState().conversations[c.conversationId];
     const other = c.participants.find((p) => p.id !== me.id) ?? null;
     try {
-      await calls.start(c.conversationId, c.type, conv?.name ?? other?.displayName ?? 'Call', conv?.type === 'GROUP' ? null : other, conv?.type === 'GROUP');
+      await calls.start(c.conversationId, type, conv?.name ?? other?.displayName ?? 'Call', conv?.type === 'GROUP' ? null : other, conv?.type === 'GROUP');
     } catch (e) {
       toast(errorText(e), 'error');
     }
@@ -58,6 +88,11 @@ export default function CallsPage() {
             </button>
           ))}
         </div>
+        {Boolean(items?.length) && (
+          <IconButton label={missedOnly ? 'Clear missed calls' : 'Clear call history'} onClick={clearAll}>
+            <Trash2 className="size-5" />
+          </IconButton>
+        )}
       </PageHeader>
       {error && <ErrorBox text={error} retry={() => void load()} />}
       <ul className="mx-auto max-w-2xl p-2">
@@ -80,9 +115,17 @@ export default function CallsPage() {
                   {c.status === 'BUSY' && ' · busy'}
                 </p>
               </div>
-              <IconButton label={`Call ${name} again`} onClick={() => callBack(c)}>
-                {c.type === 'VIDEO' ? <Video className="size-5" /> : <Phone className="size-5" />}
-              </IconButton>
+              <div className="flex shrink-0 items-center">
+                <IconButton label={`Voice call ${name}`} onClick={() => callBack(c, 'AUDIO')}>
+                  <Phone className="size-5" />
+                </IconButton>
+                <IconButton label={`Video call ${name}`} onClick={() => callBack(c, 'VIDEO')}>
+                  <Video className="size-5" />
+                </IconButton>
+                <IconButton label="Delete from call history" onClick={() => void remove(c)}>
+                  <Trash2 className="size-5 text-muted" />
+                </IconButton>
+              </div>
             </li>
           );
         })}

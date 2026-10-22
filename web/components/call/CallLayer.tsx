@@ -4,7 +4,7 @@ import { Bluetooth, Check, Ear, Headphones, Maximize, MicOff, Mic, Minimize2, Ph
 import type { AudioRoute } from '@/lib/audioRoute';
 import { calls, type CallState, type GroupTile } from '@/lib/calls';
 import { cx, duration } from '@/lib/format';
-import { Avatar } from '../ui';
+import { Avatar, useToast } from '../ui';
 
 function useCall(): CallState {
   return useSyncExternalStore(calls.subscribe, calls.getState, calls.getState);
@@ -51,7 +51,8 @@ function Ctrl({ label, onClick, children, danger, off, big }: { label: string; o
       onClick={onClick}
       className={cx(
         'flex items-center justify-center rounded-full transition active:scale-95',
-        big ? 'size-16' : 'size-14',
+        // Smaller on narrow phones so all five buttons fit in one row.
+        big ? 'size-14 sm:size-16' : 'size-12 sm:size-14',
         danger ? 'bg-danger text-white' : off ? 'bg-white text-black' : 'bg-white/15 text-white hover:bg-white/25',
       )}
     >
@@ -145,6 +146,7 @@ function AudioRouteButton({ s }: { s: CallState }) {
 
 export function CallLayer() {
   const s = useCall();
+  const toast = useToast();
   const secs = useTimer(s.connectedAt);
   const [mini, setMini] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
@@ -287,15 +289,18 @@ export function CallLayer() {
         {s.error && s.phase === 'ended' && <p className="absolute inset-x-0 bottom-6 text-center text-sm text-red-300">{s.error}</p>}
       </div>
 
-      <div className="safe-b flex items-center justify-center gap-4 px-4 py-6">
+      <div className="safe-b flex items-center justify-center gap-3 px-4 py-6 sm:gap-4">
         <Ctrl label={s.micOn ? 'Mute microphone' : 'Unmute microphone'} off={!s.micOn} onClick={() => calls.toggleMic()}>
           {s.micOn ? <Mic className="size-6" /> : <MicOff className="size-6" />}
         </Ctrl>
-        {video && !s.audioOnlyFallback && (
-          <Ctrl label={s.camOn ? 'Turn camera off' : 'Turn camera on'} off={!s.camOn} onClick={() => calls.toggleCam()}>
-            {s.camOn ? <Video className="size-6" /> : <VideoOff className="size-6" />}
-          </Ctrl>
-        )}
+        {/* Voice call: turns it into a video call. Video call: camera on / off. */}
+        <Ctrl
+          label={!video || s.audioOnlyFallback ? 'Turn on video' : s.camOn ? 'Turn camera off' : 'Turn camera on'}
+          off={video && !s.audioOnlyFallback && !s.camOn}
+          onClick={() => void calls.toggleCam().catch((e: Error) => toast(e.message, 'error'))}
+        >
+          {s.camOn || !video || s.audioOnlyFallback ? <Video className="size-6" /> : <VideoOff className="size-6" />}
+        </Ctrl>
         <AudioRouteButton s={s} />
         {video && s.canSwitchCamera && s.camOn && (
           <Ctrl label="Switch camera" onClick={() => void calls.switchCamera()}>

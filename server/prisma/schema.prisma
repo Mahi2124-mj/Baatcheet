@@ -75,9 +75,10 @@ model User {
   /// Optional: accounts can be made with just a username and password.
   email            String?   @unique
   emailVerifiedAt  DateTime?
-  /// SHA-256 of the user's personal login code (see services/loginCode.ts) and an encrypted copy to show it again.
-  loginCodeHash    String?   @unique
-  loginCodeEnc     String?
+  /// Argon2id hash of the user's own quick-login PIN (4–6 digits), set after logging in. Null: no PIN.
+  pinHash          String?
+  /// Wrong PINs in a row; at 5 the PIN is removed and the password is needed again.
+  pinFails         Int       @default(0)
   passwordHash     String
   role             Role      @default(USER)
   suspendedAt      DateTime?
@@ -337,6 +338,8 @@ model CallParticipant {
   joinedAt DateTime?
   leftAt   DateTime?
   response String?
+  /// The user deleted this call from their own call history (others still see it).
+  hiddenAt DateTime?
 
   @@id([callId, userId])
   @@index([userId, invitedAt])

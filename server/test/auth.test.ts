@@ -166,40 +166,45 @@ describe('protection', () => {
     await admin.agent.get('/api/admin/stats').expect(200);
   });
 
-  it('logs in on another device with the personal login code only', async () => {
+  it('sets a PIN after logging in, then logs in on another device with username + PIN', async () => {
     const u = await register(srv);
-    const { code } = (await u.agent.get('/api/auth/login-code').expect(200)).body;
-    expect(code).toMatch(/^[2-9A-Z]{4}-[2-9A-Z]{4}-[2-9A-Z]{4}$/);
-    // Same code on every call; the database keeps only a hash and an encrypted copy.
-    expect((await u.agent.get('/api/auth/login-code').expect(200)).body.code).toBe(code);
+    expect((await u.agent.get('/api/auth/me').expect(200)).body.hasPin).toBe(false);
+    await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '4826' }).expect(401);
+    await u.agent.put('/api/auth/pin').send({ pin: '12' }).expect(400);
+    await u.agent.put('/api/auth/pin').send({ pin: '1111' }).expect(400);
+    await u.agent.put('/api/auth/pin').send({ pin: '1234' }).expect(400);
+    const set = await u.agent.put('/api/auth/pin').send({ pin: '4826' }).expect(200);
+    expect(set.body.hasPin).toBe(true);
     const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
-    expect(row.loginCodeHash).not.toContain(code.replace(/-/g, ''));
-    expect(row.loginCodeEnc).not.toContain(code.replace(/-/g, ''));
-    // A fresh device (no cookie): lower case and spaces are fine.
-    const r = await api(srv.http).post('/api/auth/code-login').send({ code: code.toLowerCase().replace(/-/g, ' ') }).expect(200);
+    expect(row.pinHash).toMatch(/^\$argon2id\$/);
+    // A fresh device (no cookie); the username is case-insensitive.
+    const r = await api(srv.http).post('/api/auth/pin-login').send({ username: u.username.toUpperCase(), pin: '4826' }).expect(200);
     expect(r.body.id).toBe(u.id);
     await api(srv.http, cookieFrom(r)).get('/api/auth/me').expect(200);
+    // Removing the PIN turns PIN login off.
+    await u.agent.delete('/api/auth/pin').expect(200);
+    await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '4826' }).expect(401);
   });
 
-  it('returns the code at sign-up, refuses wrong codes and retires old ones', async () => {
-    const res = await api(srv.http).post('/api/auth/register').send({ email: 'codey@test.local', password: 'Password123', username: 'codey', displayName: 'Codey' }).expect(201);
-    const first = res.body.loginCode as string;
-    expect(first).toMatch(/^[2-9A-Z]{4}-[2-9A-Z]{4}-[2-9A-Z]{4}$/);
-    const agent = api(srv.http, cookieFrom(res));
-    await api(srv.http).post('/api/auth/code-login').send({ code: 'AAAA-BBBB-CCCC' }).expect(401);
-    await api(srv.http).post('/api/auth/code-login').send({ code: 'short' }).expect(401);
-    const second = (await agent.post('/api/auth/login-code/regenerate').expect(200)).body.code;
-    expect(second).not.toBe(first);
-    await api(srv.http).post('/api/auth/code-login').send({ code: first }).expect(401);
-    await api(srv.http).post('/api/auth/code-login').send({ code: second }).expect(200);
-    await api(srv.http).get('/api/auth/login-code').expect(401);
-  });
-
-  it('refuses the code of a suspended account', async () => {
+  it('turns PIN login off after 5 wrong PINs', async () => {
     const u = await register(srv);
-    const { code } = (await u.agent.get('/api/auth/login-code').expect(200)).body;
+    await u.agent.put('/api/auth/pin').send({ pin: '4826' }).expect(200);
+    for (let i = 0; i < 4; i++) await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '0000' }).expect(401);
+    // One wrong guess left; a correct PIN resets the counter.
+    await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '4826' }).expect(200);
+    for (let i = 0; i < 4; i++) await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '0000' }).expect(401);
+    const last = await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '0000' }).expect(401);
+    expect(last.body.code).toBe('pin_locked');
+    await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '4826' }).expect(401);
+    // The password still works.
+    await api(srv.http).post('/api/auth/login').send({ username: u.username, password: u.password }).expect(200);
+  });
+
+  it('refuses the PIN of a suspended account', async () => {
+    const u = await register(srv);
+    await u.agent.put('/api/auth/pin').send({ pin: '4826' }).expect(200);
     await prisma.user.update({ where: { id: u.id }, data: { suspendedAt: new Date() } });
-    await api(srv.http).post('/api/auth/code-login').send({ code }).expect(403);
+    await api(srv.http).post('/api/auth/pin-login').send({ username: u.username, pin: '4826' }).expect(403);
   });
 });
 

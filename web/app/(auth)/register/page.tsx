@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { rememberLogin } from '@/lib/quickLogin';
 import { api, errorText } from '@/lib/api';
 import { Button, Input } from '@/components/ui';
 
@@ -22,6 +23,7 @@ export default function RegisterPage() {
     setError(null);
     try {
       const r = await api.post<{ verificationEmailSent: boolean; emailVerified: boolean }>('/auth/register', { ...f, username: f.username.toLowerCase() });
+      rememberLogin(f.username.toLowerCase(), false);
       router.replace(r.emailVerified ? '/onboarding' : r.verificationEmailSent ? '/verify-email?sent=1' : '/verify-email?sent=0');
     } catch (err) {
       setError(errorText(err));

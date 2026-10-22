@@ -218,7 +218,11 @@ export class CallController {
       void this.onSignal(data);
     });
     s.on('call:media', ({ callId, audio, video }) => {
-      if (callId === this.state.callId) this.set({ remoteMedia: { audio, video } });
+      if (callId !== this.state.callId) return;
+      // The other person turned their camera on in a voice call: show the video layout.
+      const upgrade = video && this.state.type === 'AUDIO';
+      this.set({ remoteMedia: { audio, video }, ...(upgrade ? { type: 'VIDEO' as const } : {}) });
+      if (upgrade && this.state.audioRoute === 'earpiece') void this.setAudioRoute('speaker');
     });
     s.on('call:resumed', ({ callId }) => {
       // The other side got a new socket; the caller restarts ICE so media finds its way again.
@@ -366,13 +370,56 @@ export class CallController {
     this.sendMedia();
   }
 
-  toggleCam() {
-    if (this.state.type !== 'VIDEO' || this.state.audioOnlyFallback) return;
+  /**
+   * Camera on / off. In a voice call (or a video call that started without camera access) turning it on
+   * opens the camera and makes it a video call, without ringing again.
+   */
+  async toggleCam() {
+    if (this.state.phase === 'idle' || this.state.phase === 'ended' || this.state.phase === 'incoming') return;
     const on = !this.state.camOn;
+    if (on && !this.room && !this.state.local?.getVideoTracks().length) return this.startVideo();
     this.state.local?.getVideoTracks().forEach((t) => (t.enabled = on));
-    void this.room?.localParticipant.setCameraEnabled(on);
-    this.set({ camOn: on });
+    if (this.room) {
+      try {
+        await this.room.localParticipant.setCameraEnabled(on);
+      } catch (e) {
+        throw new Error(mediaError(e, 'VIDEO'));
+      }
+    }
+    const wasEarpiece = on && this.state.audioRoute === 'earpiece';
+    this.set({ camOn: on, ...(on ? { type: 'VIDEO' as const, audioOnlyFallback: false } : {}) });
     this.sendMedia();
+    if (wasEarpiece) void this.setAudioRoute('speaker');
+  }
+
+  /** Opens the camera mid-call and sends it in the video slot every 1:1 call has (see createPc). */
+  private async startVideo() {
+    let track: MediaStreamTrack;
+    try {
+      track = (await navigator.mediaDevices.getUserMedia({ video: { ...CAMERA, facingMode: 'user' } })).getVideoTracks()[0];
+    } catch (e) {
+      throw new Error(mediaError(e, 'VIDEO'));
+    }
+    const local = this.state.local;
+    if (!local || this.state.phase === 'idle' || this.state.phase === 'ended') {
+      track.stop();
+      return;
+    }
+    if (this.pc) {
+      const slot = this.pc.getTransceivers().find((t) => t.receiver.track.kind === 'video' && (t.currentDirection ?? t.direction).includes('send'));
+      if (!slot) {
+        track.stop();
+        throw new Error('The other person’s app is out of date, so video can’t be added to this call. Start a video call instead.');
+      }
+      await slot.sender.replaceTrack(track);
+    }
+    local.addTrack(track);
+    const wasEarpiece = this.state.audioRoute === 'earpiece';
+    this.set({ local: new MediaStream(local.getTracks()), camOn: true, type: 'VIDEO', audioOnlyFallback: false, canSwitchCamera: (await this.countCameras()) > 1 });
+    this.sendMedia();
+    if (this.pc) void this.tuneSenders(this.pc);
+    // Like a phone: video calls are on the loudspeaker.
+    if (wasEarpiece) void this.setAudioRoute('speaker');
   }
 
   /** Cycles to the next camera (front / back on phones). */
@@ -504,7 +551,9 @@ export class CallController {
     this.set({ remote });
     this.state.local?.getTracks().forEach((t) => pc.addTrack(t, this.state.local!));
     // A video call that fell back to voice still receives the other side's video.
-    if (this.state.type === 'VIDEO' && !this.state.local?.getVideoTracks().length) pc.addTransceiver('video', { direction: 'recvonly' });
+    // Every 1:1 call has room for video, so a voice call can become a video call later without a new
+    // offer (only the caller sends offers). The callee opens its side of the slot in onSignal.
+    if (this.state.outgoing && !this.state.local?.getVideoTracks().length) pc.addTransceiver('video', { direction: 'sendrecv' });
     pc.ontrack = (e) => {
       if (!remote.getTracks().includes(e.track)) remote.addTrack(e.track);
       this.set({ remote: new MediaStream(remote.getTracks()) });
@@ -585,6 +634,8 @@ export class CallController {
       if (data.type === 'offer') {
         await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
         this.remoteSet = true;
+        // Answer the caller's video slot as send + receive, so our camera can be turned on mid-call.
+        for (const t of pc.getTransceivers()) if (t.receiver.track.kind === 'video' && t.direction === 'recvonly') t.direction = 'sendrecv';
         await this.flushIce();
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);

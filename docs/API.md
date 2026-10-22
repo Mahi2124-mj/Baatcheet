@@ -23,9 +23,9 @@ Base path: `/api`. JSON in, JSON out. Authentication is an `HttpOnly` session co
 | POST | `/forgot-password` | `{email}` | Always 200 (no account discovery). Link valid 1 h. |
 | POST | `/reset-password` | `{token, password}` | Logs out every session. |
 | POST | `/change-password` | `{current, password}` | Logs out other sessions. |
-| POST | `/code-login` | `{code}` | Log in with the personal login code (dashes / spaces / case ignored). 401 wrong code, 403 suspended. |
-| GET | `/login-code` | | Logged in: your login code (created on first use). |
-| POST | `/login-code/regenerate` | | Logged in: new code; the old one stops working. |
+| POST | `/pin-login` | `{username, pin}` | Log in with username (or e-mail) + PIN. 401 wrong (after 5 in a row the PIN is removed, `code: pin_locked`), 403 suspended. |
+| PUT | `/pin` | `{pin}` | Logged in: set / change the PIN (4–6 digits; 1111 / 1234-style PINs refused). Answers the account (`hasPin: true`). |
+| DELETE | `/pin` | | Logged in: remove the PIN. |
 | GET | `/sessions` | – | Devices: `[{id, userAgent, ip, lastUsedAt, current}]` |
 | DELETE | `/sessions/:id` | – | Log a device out (its socket is disconnected too). |
 | POST | `/sessions/revoke-others` | – | |
@@ -108,6 +108,8 @@ Downloads are signed URLs (1 h) handed only to members of the chat.
 | GET | `/ice-servers` | `{iceServers, ttl}` — STUN + TURN with per-user credentials that expire. |
 | GET | `/config` | `{groupCalls: boolean}` (LiveKit configured). |
 | GET | `/?before=&missed=1` | Call history `{items: [{id, type, status, startedAt, answeredAt, endedAt, participants, outgoing, missed}], nextCursor}` |
+| DELETE | `/:id` | Remove a finished call from **your** call history (others keep it). |
+| DELETE | `/?missed=1` | Clear your call history (or only missed calls). Calls in progress stay. |
 | POST | `/:id/token` | LiveKit `{url, token}` for a group call you joined. |
 | GET | `/active/:conversationId` | Running group call in a chat, or `null`. |
 

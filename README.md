@@ -120,8 +120,11 @@ e-mail in development.
 The web app asks only for a username and a password, and the account works straight away. Accounts
 made with an e-mail through the API still get verification and password-reset mails, and can log in
 with that e-mail in the username field. Admins can be named by `ADMIN_USERNAMES` as well as
-`ADMIN_EMAILS`. Sessions last `SESSION_DAYS` (default 365), so a device stays logged in. (The API
-still has `/auth/code-login`; the web app no longer shows login codes.)
+`ADMIN_EMAILS`. Sessions last `SESSION_DAYS` (default 365), so a device stays logged in.
+
+**Quick-login PIN:** after logging in, a user can set a 4–6 digit PIN (onboarding or Settings → Quick-login
+PIN). On any device they then log in with username + PIN; a device that logged in before remembers the
+username, so only the PIN is asked. After 5 wrong PINs the PIN is removed and the password is needed again.
 
 ### Push notifications (optional)
 

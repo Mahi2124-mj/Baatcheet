@@ -25,7 +25,7 @@ calls.get('/', h(async (req, res) => {
   const self = me(req).id;
   const rows = await prisma.call.findMany({
     where: {
-      participants: { some: { userId: self, ...(q.missed === '1' ? { response: 'missed' } : {}) } },
+      participants: { some: { userId: self, hiddenAt: null, ...(q.missed === '1' ? { response: 'missed' } : {}) } },
       status: { not: 'RINGING' },
     },
     orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
@@ -49,6 +49,26 @@ calls.get('/', h(async (req, res) => {
     missed: c.participants.find((p) => p.userId === self)?.response === 'missed',
   }));
   res.json({ items, nextCursor: rows.length > 30 ? page[29].id : null });
+}));
+
+/** Deletes one call from the user's own call history (the other people still see it). */
+calls.delete('/:id', h(async (req, res) => {
+  const r = await prisma.callParticipant.updateMany({
+    where: { callId: req.params.id, userId: me(req).id, hiddenAt: null, call: { status: { notIn: ['RINGING', 'ONGOING'] } } },
+    data: { hiddenAt: new Date() },
+  });
+  if (!r.count) throw notFound('Call not found');
+  res.json({ ok: true });
+}));
+
+/** Clears the user's call history (?missed=1: only missed calls). Calls in progress stay. */
+calls.delete('/', h(async (req, res) => {
+  const q = parse(z.object({ missed: z.enum(['1', '0']).optional() }), req.query);
+  const r = await prisma.callParticipant.updateMany({
+    where: { userId: me(req).id, hiddenAt: null, ...(q.missed === '1' ? { response: 'missed' } : {}), call: { status: { notIn: ['RINGING', 'ONGOING'] } } },
+    data: { hiddenAt: new Date() },
+  });
+  res.json({ ok: true, count: r.count });
 }));
 
 /** LiveKit token for a group call the caller has joined. */

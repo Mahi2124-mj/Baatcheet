@@ -11,7 +11,6 @@ import { deleteObject } from '../../lib/storage.js';
 import { disconnectSession, disconnectUser } from '../../realtime/hub.js';
 import { audit } from '../../services/audit.js';
 import { mePayload } from '../../services/me.js';
-import { findByLoginCode, getLoginCode, newLoginCode } from '../../services/loginCode.js';
 import { clearSessionCookie, createSession, me, requireAuth } from '../session.js';
 
 export const auth = Router();
@@ -45,6 +44,13 @@ async function sendVerification(userId: string, to: string) {
 const listed = (list: string, value?: string) => !!value && list.split(',').map((s) => s.trim().toLowerCase()).includes(value);
 const isAdmin = (email: string | undefined, username: string) => listed(config.ADMIN_EMAILS, email) || listed(config.ADMIN_USERNAMES, username);
 
+/** Account by username, or by e-mail when the name contains "@". */
+async function findAccount(name: string) {
+  return name.includes('@')
+    ? prisma.user.findUnique({ where: { email: name } })
+    : (await prisma.userProfile.findUnique({ where: { username: name }, include: { user: true } }))?.user ?? null;
+}
+
 auth.post('/register', strict, h(async (req, res) => {
   const input = parse(registerInput, req.body);
   if (await prisma.userProfile.findUnique({ where: { username: input.username } })) throw conflict('That username is taken');
@@ -70,17 +76,13 @@ auth.post('/register', strict, h(async (req, res) => {
       return false;
     },
   ));
-  const loginCode = await newLoginCode(user.id);
   await createSession(res, req, user.id);
-  res.status(201).json({ ...(await mePayload(user.id)), verificationEmailSent, loginCode });
+  res.status(201).json({ ...(await mePayload(user.id)), verificationEmailSent });
 }));
 
 auth.post('/login', loginLimit, h(async (req, res) => {
   const input = parse(loginInput, req.body);
-  const name = (input.email ?? input.username)!;
-  const user = name.includes('@')
-    ? await prisma.user.findUnique({ where: { email: name } })
-    : (await prisma.userProfile.findUnique({ where: { username: name }, include: { user: true } }))?.user ?? null;
+  const user = await findAccount((input.email ?? input.username)!);
   if (!user) {
     await verifyPassword(await dummyHash(), input.password);
     throw unauthorized('Wrong username or password');
@@ -154,7 +156,7 @@ auth.post('/reset-password', strict, h(async (req, res) => {
   await prisma.user.update({
     where: { id: userId },
     // Reaching the link proves the mailbox too.
-    data: { passwordHash: await hashPassword(input.password), failedLogins: 0, lockedUntil: null, emailVerifiedAt: new Date() },
+    data: { passwordHash: await hashPassword(input.password), failedLogins: 0, lockedUntil: null, emailVerifiedAt: new Date(), pinHash: null, pinFails: 0 },
   });
   await prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
   disconnectUser(userId);
@@ -173,25 +175,50 @@ auth.post('/change-password', requireAuth, strict, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ----- personal login code (sign in on any device without e-mail or password) -----
+// ----- quick-login PIN (set by the user after logging in once) -----
 
-auth.post('/code-login', limit(15 * 60_000, 10), h(async (req, res) => {
-  const { code } = parse(z.object({ code: z.string().trim().min(1).max(40) }), req.body);
-  const user = await findByLoginCode(code);
-  if (!user) throw unauthorized('Wrong code. Check it in Settings → Login code on a device where you are logged in.');
+const pinSchema = z.string().regex(/^\d{4,6}$/, 'The PIN must be 4 to 6 digits');
+const MAX_PIN_FAILS = 5;
+
+auth.post('/pin-login', limit(15 * 60_000, 20), h(async (req, res) => {
+  const input = parse(z.object({ username: z.string().trim().toLowerCase().min(1).max(254), pin: z.string().max(12) }), req.body);
+  const user = await findAccount(input.username);
+  if (!user?.pinHash) {
+    await verifyPassword(await dummyHash(), input.pin);
+    throw unauthorized(user ? 'No PIN is set for this account. Log in with your password, then set a PIN in Settings.' : 'Wrong username or PIN');
+  }
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    throw new HttpError(429, 'Too many failed attempts. Try again in a few minutes.', 'locked');
+  }
+  if (!/^\d{4,6}$/.test(input.pin) || !(await verifyPassword(user.pinHash, input.pin))) {
+    const fails = user.pinFails + 1;
+    // A 4-digit PIN is short, so it only gets a few tries; then the password is needed again.
+    if (fails >= MAX_PIN_FAILS) {
+      await prisma.user.update({ where: { id: user.id }, data: { pinHash: null, pinFails: 0 } });
+      await audit(user.id, 'pin.locked', 'user', user.id, req.ip);
+      throw new HttpError(401, 'Too many wrong PINs, so PIN login is now off. Log in with your password and set a new PIN.', 'pin_locked');
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { pinFails: fails } });
+    throw unauthorized(`Wrong username or PIN (${MAX_PIN_FAILS - fails} ${MAX_PIN_FAILS - fails === 1 ? 'try' : 'tries'} left)`);
+  }
   if (user.suspendedAt) throw new HttpError(403, 'This account is suspended', 'suspended');
+  await prisma.user.update({ where: { id: user.id }, data: { pinFails: 0 } });
   await createSession(res, req, user.id);
   res.json(await mePayload(user.id));
 }));
 
-auth.get('/login-code', requireAuth, h(async (req, res) => {
-  res.json({ code: await getLoginCode(me(req).id) });
+auth.put('/pin', requireAuth, strict, h(async (req, res) => {
+  const { pin } = parse(z.object({ pin: pinSchema }), req.body);
+  if (/^(\d)\1+$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) throw badRequest('Choose a PIN that is harder to guess than ' + pin);
+  await prisma.user.update({ where: { id: me(req).id }, data: { pinHash: await hashPassword(pin), pinFails: 0 } });
+  await audit(me(req).id, 'pin.set', 'user', me(req).id, req.ip);
+  res.json(await mePayload(me(req).id));
 }));
 
-auth.post('/login-code/regenerate', requireAuth, strict, h(async (req, res) => {
-  const code = await newLoginCode(me(req).id);
-  await audit(me(req).id, 'login_code.regenerate', 'user', me(req).id, req.ip);
-  res.json({ code });
+auth.delete('/pin', requireAuth, h(async (req, res) => {
+  await prisma.user.update({ where: { id: me(req).id }, data: { pinHash: null, pinFails: 0 } });
+  await audit(me(req).id, 'pin.remove', 'user', me(req).id, req.ip);
+  res.json(await mePayload(me(req).id));
 }));
 
 // ----- sessions / devices -----

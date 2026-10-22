@@ -11,6 +11,8 @@ import { resetStore } from '@/lib/store';
 import { cx, timeShort } from '@/lib/format';
 import type { Me } from '@/lib/types';
 import { Avatar, Button, Card, Input, Modal, Switch, useConfirm, useToast } from '@/components/ui';
+import { PinSettings } from '@/components/PinSettings';
+import { forgetLogin } from '@/lib/quickLogin';
 import { PageHeader } from '@/components/PageHeader';
 
 interface Sess {
@@ -159,6 +161,10 @@ export default function SettingsPage() {
           <ChevronRight className="size-5 text-muted" />
         </Link>
 
+        <Card title="Quick-login PIN">
+          <PinSettings />
+        </Card>
+
         <Card title="Account">
           <div className="space-y-3 py-2 text-sm">
             {me.email && (
@@ -218,6 +224,7 @@ export default function SettingsPage() {
           onClick={async () => {
             if (!(await confirm({ title: 'Really delete your account?', confirm: 'Delete forever', danger: true }))) return;
             if (await run(() => api.post('/auth/delete-account', { password: del }))) {
+              forgetLogin();
               closeSocket();
               resetStore();
               router.replace('/');
