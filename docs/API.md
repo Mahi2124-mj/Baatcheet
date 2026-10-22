@@ -14,8 +14,8 @@ Base path: `/api`. JSON in, JSON out. Authentication is an `HttpOnly` session co
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| POST | `/register` | `{email, password, username, displayName}` | 201 + cookie. Sends the verification e-mail. |
-| POST | `/login` | `{email, password}` | 5 wrong passwords lock the account for 15 min; 10/min per IP. |
+| POST | `/register` | `{username, password, email?, displayName?}` | 201 + cookie. Without `email` the account is ready at once; with one, the verification e-mail is sent. |
+| POST | `/login` | `{username, password}` (`username` may also be an e-mail) | 5 wrong passwords lock the account for 15 min; 10/min per IP. |
 | POST | `/logout` | – | Revokes this session. |
 | GET | `/me` | – | Your account + settings. |
 | POST | `/verify-email` | `{token}` | Token from the e-mail link (48 h, single use). |

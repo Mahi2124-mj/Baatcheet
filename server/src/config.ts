@@ -61,6 +61,8 @@ const schema = z
 
     /** Comma-separated e-mails that become ADMIN when they register (or on start if they exist). */
     ADMIN_EMAILS: z.string().default(''),
+    /** Same, by username (for accounts made without an e-mail). */
+    ADMIN_USERNAMES: z.string().default(''),
     LOG_LEVEL: z.string().default('info'),
     /** Disables rate limits in automated tests only. */
     DISABLE_RATE_LIMIT: bool.default('false'),

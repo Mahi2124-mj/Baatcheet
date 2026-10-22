@@ -64,13 +64,21 @@ export const password = z
   .max(128)
   .refine((p) => /[a-zA-Z]/.test(p) && /[0-9]/.test(p), 'Use letters and numbers');
 
+// Username + password is enough; e-mail (verification, password reset) and display name are optional.
 export const registerInput = z.object({
-  email,
+  email: email.optional(),
   password,
   username,
-  displayName: z.string().trim().min(1).max(LIMITS.displayName),
+  displayName: z.string().trim().min(1).max(LIMITS.displayName).optional(),
 });
-export const loginInput = z.object({ email, password: z.string().min(1).max(128) });
+// `username` also accepts an e-mail address, so accounts made with one can still log in.
+export const loginInput = z
+  .object({
+    username: z.string().trim().toLowerCase().min(1).max(254).optional(),
+    email: email.optional(),
+    password: z.string().min(1).max(128),
+  })
+  .refine((i) => i.username || i.email, 'Enter your username');
 export const resetInput = z.object({ token: z.string().min(10).max(200), password });
 
 export const profileInput = z.object({

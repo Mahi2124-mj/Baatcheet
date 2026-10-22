@@ -3,10 +3,10 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { api, errorText, uploadFile } from '@/lib/api';
+import { enablePush, pushSupported } from '@/lib/push';
 import { useSession } from '@/lib/session';
 import type { Me } from '@/lib/types';
 import { Avatar, Button, Input, useToast } from '@/components/ui';
-import { LoginCodeBox } from '@/components/LoginCode';
 
 export default function Onboarding() {
   const { me, setMe } = useSession();
@@ -21,7 +21,10 @@ export default function Onboarding() {
     setBusy(true);
     try {
       setMe(await api.patch<Me>('/users/me', { displayName: name, bio, onboarded: true }));
-      if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission().catch(() => {});
+      if ('Notification' in window && Notification.permission === 'default') {
+        // Allowing notifications also turns on push, so calls and messages arrive with no tab open.
+        await (pushSupported() ? enablePush() : Notification.requestPermission()).catch(() => {});
+      }
       router.replace('/chats');
     } catch (e) {
       toast(errorText(e), 'error');
@@ -64,10 +67,6 @@ export default function Onboarding() {
           <span className="text-sm font-medium">About (optional)</span>
           <textarea value={bio} onChange={(e) => setBio(e.target.value)} maxLength={300} className="h-20 w-full resize-none rounded-xl border border-line bg-panel-2 p-3 text-sm outline-none focus:border-accent" />
         </label>
-        <div className="space-y-2 rounded-xl border border-accent/40 p-3">
-          <p className="text-sm font-medium">Your login code — save it</p>
-          <LoginCodeBox compact />
-        </div>
         <p className="text-xs text-muted">Next, your browser may ask to show notifications — allow it to hear about calls and messages while this tab is in the background.</p>
         <Button className="w-full" loading={busy} disabled={!name.trim()} onClick={finish}>Start chatting</Button>
       </div>

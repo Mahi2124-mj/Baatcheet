@@ -42,32 +42,34 @@ async function sendVerification(userId: string, to: string) {
   await sendMail(to, 'Verify your Baatcheet e-mail', `Welcome to Baatcheet!\n\nConfirm your e-mail address:\n${link}\n\nThe link works for 48 hours.`);
 }
 
-const isAdminEmail = (e: string) => config.ADMIN_EMAILS.split(',').map((s) => s.trim().toLowerCase()).includes(e);
+const listed = (list: string, value?: string) => !!value && list.split(',').map((s) => s.trim().toLowerCase()).includes(value);
+const isAdmin = (email: string | undefined, username: string) => listed(config.ADMIN_EMAILS, email) || listed(config.ADMIN_USERNAMES, username);
 
 auth.post('/register', strict, h(async (req, res) => {
   const input = parse(registerInput, req.body);
   if (await prisma.userProfile.findUnique({ where: { username: input.username } })) throw conflict('That username is taken');
-  if (await prisma.user.findUnique({ where: { email: input.email } })) throw conflict('An account with this e-mail already exists');
+  if (input.email && await prisma.user.findUnique({ where: { email: input.email } })) throw conflict('An account with this e-mail already exists');
   const user = await prisma.user.create({
     data: {
       email: input.email,
       passwordHash: await hashPassword(input.password),
-      role: isAdminEmail(input.email) ? 'ADMIN' : 'USER',
-      emailVerifiedAt: config.AUTO_VERIFY_EMAIL ? new Date() : null,
-      profile: { create: { username: input.username, displayName: input.displayName } },
+      role: isAdmin(input.email, input.username) ? 'ADMIN' : 'USER',
+      // Without an e-mail there is nothing to verify, so the account is ready straight away.
+      emailVerifiedAt: !input.email || config.AUTO_VERIFY_EMAIL ? new Date() : null,
+      profile: { create: { username: input.username, displayName: input.displayName ?? input.username } },
     },
   }).catch((e: { code?: string }) => {
     if (e.code === 'P2002') throw conflict('That e-mail or username is taken');
     throw e;
   });
   // A mail server that is down must not break sign-up: the account exists, the user can resend later.
-  const verificationEmailSent = config.AUTO_VERIFY_EMAIL || await sendVerification(user.id, user.email).then(
+  const verificationEmailSent = config.AUTO_VERIFY_EMAIL || (user.email !== null && await sendVerification(user.id, user.email).then(
     () => true,
     (err) => {
       req.log?.error({ err }, 'verification e-mail failed');
       return false;
     },
-  );
+  ));
   const loginCode = await newLoginCode(user.id);
   await createSession(res, req, user.id);
   res.status(201).json({ ...(await mePayload(user.id)), verificationEmailSent, loginCode });
@@ -75,10 +77,13 @@ auth.post('/register', strict, h(async (req, res) => {
 
 auth.post('/login', loginLimit, h(async (req, res) => {
   const input = parse(loginInput, req.body);
-  const user = await prisma.user.findUnique({ where: { email: input.email } });
+  const name = (input.email ?? input.username)!;
+  const user = name.includes('@')
+    ? await prisma.user.findUnique({ where: { email: name } })
+    : (await prisma.userProfile.findUnique({ where: { username: name }, include: { user: true } }))?.user ?? null;
   if (!user) {
     await verifyPassword(await dummyHash(), input.password);
-    throw unauthorized('Wrong e-mail or password');
+    throw unauthorized('Wrong username or password');
   }
   if (user.lockedUntil && user.lockedUntil > new Date()) {
     throw new HttpError(429, 'Too many failed attempts. Try again in a few minutes or reset your password.', 'locked');
@@ -89,7 +94,7 @@ auth.post('/login', loginLimit, h(async (req, res) => {
       where: { id: user.id },
       data: fails >= MAX_FAILS ? { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60_000) } : { failedLogins: fails },
     });
-    throw unauthorized('Wrong e-mail or password');
+    throw unauthorized('Wrong username or password');
   }
   if (user.suspendedAt) throw new HttpError(403, 'This account is suspended', 'suspended');
   await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
@@ -119,7 +124,7 @@ auth.post('/verify-email', strict, h(async (req, res) => {
 
 auth.post('/resend-verification', requireAuth, limit(60 * 60_000, 5), h(async (req, res) => {
   const user = me(req);
-  if (user.emailVerifiedAt) return res.json({ ok: true, alreadyVerified: true });
+  if (user.emailVerifiedAt || !user.email) return res.json({ ok: true, alreadyVerified: true });
   try {
     await sendVerification(user.id, user.email);
   } catch (err) {

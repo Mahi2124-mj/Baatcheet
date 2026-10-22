@@ -8,7 +8,7 @@ A complete web app for real-time messaging, 1:1 voice and video calls (WebRTC) a
 
 | Area | Implemented |
 |---|---|
-| Accounts | E-mail + password sign-up (argon2id), e-mail verification, login / logout, forgot + reset password, personal login code (sign in on any device with one unique code, no e-mail or password), onboarding, profile (name, unique username, about, picture), change password, device list with remote log-out, account deletion |
+| Accounts | Username + password sign-up and login (argon2id), no e-mail needed; optional e-mail via the API (verification, forgot + reset password), onboarding, profile (name, unique username, about, picture), change password, device list with remote log-out, account deletion |
 | Messaging | 1:1 and group chats, real-time delivery, persisted history with cursor pagination (infinite scroll), last-message previews, timestamps, sent / delivered / read ticks, typing, online / last seen, unread counters, reply, edit (48 h), delete for everyone, reactions, emoji, images / video / audio / documents / voice notes with type + size checks, message search (trigram index), chat search and filters, pin / archive / mute / clear, duplicate-safe re-sends after reconnects |
 | Voice calls | Start from a chat, incoming-call window with ring tone, accept / decline, end, mute, timer, ringing → connecting → connected → ended states, busy, offline callee (push notification), missed calls (notification, history, chat line), ICE restarts on network changes, socket reconnect → resume, permission errors explained |
 | Video calls | Everything above + local / remote video, camera on/off, switch camera, full screen, picture-in-picture, voice-only fallback when the camera is denied or missing |
@@ -115,17 +115,19 @@ No secret is hard-coded or sent to the browser.
 `SMTP_URL` in nodemailer format, e.g. `smtps://user:pass@smtp.example.com:465`. Mailpit catches all
 e-mail in development.
 
-### Login code
+### Sign-up and login
 
-Every account gets a unique code like `K7QM-3XRP-9WTD` (shown after sign-up and in Settings → Login
-code). On any device, "Log in with code" signs straight in, without e-mail or password. Users can make a
-new code at any time; the old one stops working. Sessions last `SESSION_DAYS` (default 365), so a device
-stays logged in.
+The web app asks only for a username and a password, and the account works straight away. Accounts
+made with an e-mail through the API still get verification and password-reset mails, and can log in
+with that e-mail in the username field. Admins can be named by `ADMIN_USERNAMES` as well as
+`ADMIN_EMAILS`. Sessions last `SESSION_DAYS` (default 365), so a device stays logged in. (The API
+still has `/auth/code-login`; the web app no longer shows login codes.)
 
 ### Push notifications (optional)
 
-Generate VAPID keys (`npm run vapid -w server`) into `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`. Users
-enable push in Settings → Notifications.
+Generate VAPID keys (`npm run vapid -w server`) into `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`. Push is
+turned on when a user allows notifications (end of onboarding) and stays on for that device; it can be
+switched off in Settings → Notifications.
 
 ### Group calls (optional)
 

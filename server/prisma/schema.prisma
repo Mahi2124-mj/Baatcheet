@@ -72,7 +72,8 @@ enum ReportStatus {
 
 model User {
   id               String    @id @default(cuid())
-  email            String    @unique
+  /// Optional: accounts can be made with just a username and password.
+  email            String?   @unique
   emailVerifiedAt  DateTime?
   /// SHA-256 of the user's personal login code (see services/loginCode.ts) and an encrypted copy to show it again.
   loginCodeHash    String?   @unique

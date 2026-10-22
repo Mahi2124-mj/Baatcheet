@@ -13,6 +13,8 @@ async function main() {
   // Promote configured admins that already have an account.
   const admins = config.ADMIN_EMAILS.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   if (admins.length) await prisma.user.updateMany({ where: { email: { in: admins } }, data: { role: 'ADMIN' } });
+  const adminNames = config.ADMIN_USERNAMES.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (adminNames.length) await prisma.user.updateMany({ where: { profile: { username: { in: adminNames } } }, data: { role: 'ADMIN' } });
 
   const http = createServer(createApp());
   const io = createSocketServer(http);

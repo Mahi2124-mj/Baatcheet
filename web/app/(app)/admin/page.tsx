@@ -159,10 +159,10 @@ export default function AdminPage() {
             <table className="w-full text-left text-sm">
               <thead className="text-xs uppercase text-muted"><tr><th className="p-2">User</th><th className="p-2">E-mail</th><th className="p-2">Joined</th><th className="p-2">Msgs</th><th className="p-2">Reports</th><th className="p-2" /></tr></thead>
               <tbody>
-                {(data as { items: { id: string; username: string; displayName: string; email: string; emailVerified: boolean; role: string; createdAt: string; messages: number; reports: number; suspendedAt: string | null }[] }).items.map((u) => (
+                {(data as { items: { id: string; username: string; displayName: string; email: string | null; emailVerified: boolean; role: string; createdAt: string; messages: number; reports: number; suspendedAt: string | null }[] }).items.map((u) => (
                   <tr key={u.id} className="border-t border-line">
                     <td className="p-2">{u.displayName} <span className="text-muted">@{u.username}</span> {u.role === 'ADMIN' && <span className="text-accent">admin</span>}</td>
-                    <td className="p-2">{u.email}{!u.emailVerified && <span className="text-muted"> (unverified)</span>}</td>
+                    <td className="p-2">{u.email ?? <span className="text-muted">—</span>}{u.email && !u.emailVerified && <span className="text-muted"> (unverified)</span>}</td>
                     <td className="p-2">{timeShort(u.createdAt)}</td>
                     <td className="p-2">{u.messages}</td>
                     <td className="p-2">{u.reports}</td>

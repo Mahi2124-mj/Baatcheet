@@ -27,6 +27,35 @@ describe('registration and login', () => {
     expect(String(login.headers['set-cookie'])).toMatch(/SameSite=Lax/);
   });
 
+  it('signs up and logs in with just a username and password', async () => {
+    const res = await api(srv.http).post('/api/auth/register').send({ username: 'Solo.User', password: 'Password123' }).expect(201);
+    expect(res.body).toMatchObject({ username: 'solo.user', displayName: 'solo.user', email: null, emailVerified: true });
+    expect(await prisma.authToken.count({ where: { userId: res.body.id } })).toBe(0);
+
+    const login = await api(srv.http).post('/api/auth/login').send({ username: 'SOLO.user', password: 'Password123' }).expect(200);
+    expect(login.body.id).toBe(res.body.id);
+    const wrong = await api(srv.http).post('/api/auth/login').send({ username: 'solo.user', password: 'Wrong12345' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.error).toBe('Wrong username or password');
+    // A second account without e-mail is fine (NULL doesn't clash with the unique index).
+    await api(srv.http).post('/api/auth/register').send({ username: 'solo_two', password: 'Password123' }).expect(201);
+  });
+
+  it('lets an account made without e-mail delete itself', async () => {
+    const res = await api(srv.http).post('/api/auth/register').send({ username: 'leaving', password: 'Password123' }).expect(201);
+    const agent = api(srv.http, cookieFrom(res));
+    await agent.post('/api/auth/delete-account').send({ password: 'Password123' }).expect(200);
+    await api(srv.http).post('/api/auth/login').send({ username: 'leaving', password: 'Password123' }).expect(401);
+    // The username is free again.
+    await api(srv.http).post('/api/auth/register').send({ username: 'leaving', password: 'Password123' }).expect(201);
+  });
+
+  it('logs in by username or e-mail for accounts that have one', async () => {
+    const u = await register(srv);
+    await api(srv.http).post('/api/auth/login').send({ username: u.username, password: u.password }).expect(200);
+    await api(srv.http).post('/api/auth/login').send({ username: u.email, password: u.password }).expect(200);
+  });
+
   it('rejects duplicates, weak passwords and bad usernames', async () => {
     const u = await register(srv);
     await api(srv.http).post('/api/auth/register').send({ email: u.email, password: 'Password123', username: 'other_name', displayName: 'X' }).expect(409);
@@ -45,7 +74,7 @@ describe('registration and login', () => {
   it('gives the same answer for unknown e-mails', async () => {
     const r = await api(srv.http).post('/api/auth/login').send({ email: 'nobody@test.local', password: 'Password123' });
     expect(r.status).toBe(401);
-    expect(r.body.error).toBe('Wrong e-mail or password');
+    expect(r.body.error).toBe('Wrong username or password');
     await api(srv.http).post('/api/auth/forgot-password').send({ email: 'nobody@test.local' }).expect(200);
   });
 

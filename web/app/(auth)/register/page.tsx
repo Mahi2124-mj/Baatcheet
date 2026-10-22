@@ -7,7 +7,7 @@ import { Button, Input } from '@/components/ui';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [f, setF] = useState({ displayName: '', username: '', email: '', password: '' });
+  const [f, setF] = useState({ username: '', password: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
@@ -33,7 +33,6 @@ export default function RegisterPage() {
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <h1 className="text-xl font-semibold">Create your account</h1>
-      <Input label="Your name" autoComplete="name" required maxLength={60} value={f.displayName} onChange={set('displayName')} />
       <Input
         label="Username"
         autoComplete="username"
@@ -41,9 +40,8 @@ export default function RegisterPage() {
         value={f.username}
         onChange={set('username')}
         error={f.username && !userOk ? '3–24 letters, numbers, _ or .' : null}
-        hint="People find you by this name."
+        hint="People find you by this name. You log in with it too."
       />
-      <Input label="E-mail" type="email" autoComplete="email" required value={f.email} onChange={set('email')} />
       <Input
         label="Password"
         type="password"

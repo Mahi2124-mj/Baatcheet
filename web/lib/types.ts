@@ -2,7 +2,7 @@ export type { Attachment, CallRecord, CallType, ConversationSummary, Message, Pu
 
 export interface Me {
   id: string;
-  email: string;
+  email: string | null;
   emailVerified: boolean;
   role: 'USER' | 'ADMIN';
   username: string;

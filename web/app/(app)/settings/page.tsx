@@ -12,7 +12,6 @@ import { cx, timeShort } from '@/lib/format';
 import type { Me } from '@/lib/types';
 import { Avatar, Button, Card, Input, Modal, Switch, useConfirm, useToast } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
-import { LoginCodeBox } from '@/components/LoginCode';
 
 interface Sess {
   id: string;
@@ -103,7 +102,7 @@ export default function SettingsPage() {
             />
             <div className="min-w-0">
               <p className="font-semibold">{me.displayName}</p>
-              <p className="text-sm text-muted">{me.email}</p>
+              <p className="text-sm text-muted">{me.email ?? `@${me.username}`}</p>
               {me.avatarUrl && <button className="text-xs text-danger" onClick={() => run(async () => setMe(await api.patch<Me>('/users/me', { avatarKey: null })))}>Remove picture</button>}
             </div>
           </div>
@@ -160,18 +159,14 @@ export default function SettingsPage() {
           <ChevronRight className="size-5 text-muted" />
         </Link>
 
-        <Card title="Login code">
-          <div className="py-2">
-            <LoginCodeBox />
-          </div>
-        </Card>
-
         <Card title="Account">
           <div className="space-y-3 py-2 text-sm">
-            <p>
-              E-mail: {me.email}{' '}
-              {me.emailVerified ? <span className="text-ok">· verified</span> : <button className="text-accent" onClick={() => run(() => api.post('/auth/resend-verification'), 'Verification e-mail sent')}>· verify now</button>}
-            </p>
+            {me.email && (
+              <p>
+                E-mail: {me.email}{' '}
+                {me.emailVerified ? <span className="text-ok">· verified</span> : <button className="text-accent" onClick={() => run(() => api.post('/auth/resend-verification'), 'Verification e-mail sent')}>· verify now</button>}
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" onClick={() => setPw({ current: '', password: '' })}>Change password</Button>
               <Button variant="secondary" size="sm" onClick={logout}><LogOut className="size-4" /> Log out</Button>
