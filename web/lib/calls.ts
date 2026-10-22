@@ -10,6 +10,11 @@ import { api } from './api';
 import { defaultRoute, listRoutes, type AudioRoute, type RouteOption } from './audioRoute';
 import { emitAck, getSocket } from './socket';
 
+/** Camera capture: up to Full HD. WebRTC lowers it on its own when the network or the phone can't keep up. */
+const CAMERA: MediaTrackConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } };
+/** Ceiling for the video we send (browsers stop around 2.5 Mbit/s by default); congestion control adapts below it. */
+const VIDEO_MAX_BITRATE = 4_500_000;
+
 export type Phase = 'idle' | 'outgoing' | 'incoming' | 'connecting' | 'connected' | 'reconnecting' | 'ended';
 
 export interface GroupTile {
@@ -259,7 +264,7 @@ export class CallController {
       }
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio, video: { ...CAMERA, facingMode: 'user' } });
       return { stream, fallback: false };
     } catch (e) {
       // No camera / camera refused: carry on with voice only.
@@ -379,7 +384,7 @@ export class CallController {
     if (cams.length < 2) return;
     const idx = cams.findIndex((c) => c.deviceId === current.getSettings().deviceId);
     const next = cams[(idx + 1) % cams.length];
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: next.deviceId } } });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { ...CAMERA, deviceId: { exact: next.deviceId } } });
     const track = stream.getVideoTracks()[0];
     track.enabled = this.state.camOn;
     const sender = this.pc?.getSenders().find((s) => s.track?.kind === 'video');
@@ -518,6 +523,7 @@ export class CallController {
       clearTimeout(this.restartTimer ?? undefined);
       clearTimeout(this.failTimer ?? undefined);
       this.set({ phase: 'connected', connectedAt: this.state.connectedAt ?? Date.now() });
+      void this.tuneSenders(pc);
     } else if (st === 'disconnected' || st === 'failed') {
       if (this.state.phase === 'connected' || this.state.phase === 'connecting') this.set({ phase: 'reconnecting' });
       // Network changed (Wi-Fi ↔ mobile data): restart ICE; give up after 30 s.
@@ -531,6 +537,30 @@ export class CallController {
           this.set({ endReason: 'Connection lost' });
         }
       }, 30_000);
+    }
+  }
+
+  /**
+   * Quality follows the network: video may go up to Full HD on a good connection, and when bandwidth
+   * is short the voice goes first and video drops resolution rather than frame rate.
+   */
+  private async tuneSenders(pc: RTCPeerConnection) {
+    for (const sender of pc.getSenders()) {
+      const kind = sender.track?.kind;
+      const params = sender.getParameters();
+      if (!kind || !params.encodings?.length) continue;
+      for (const enc of params.encodings) {
+        if (kind === 'video') {
+          enc.maxBitrate = VIDEO_MAX_BITRATE;
+          enc.maxFramerate = 30;
+        } else {
+          enc.priority = 'high';
+          enc.networkPriority = 'high';
+        }
+      }
+      if (kind === 'video') params.degradationPreference = 'maintain-framerate';
+      // Older browsers reject some of these fields; the call works the same without them.
+      await sender.setParameters(params).catch(() => {});
     }
   }
 
