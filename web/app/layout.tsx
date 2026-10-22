@@ -3,7 +3,7 @@ import { UiProvider } from '@/components/ui';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Baatcheet — chat, voice and video calls',
+  title: 'Lottery Pao',
   description: 'Private messaging with real-time chat, voice calls and video calls.',
   manifest: '/manifest.webmanifest',
   icons: { icon: '/icon.svg' },

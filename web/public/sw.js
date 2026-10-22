@@ -5,12 +5,12 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
   let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'Baatcheet', body: event.data && event.data.text() }; }
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'Lottery Pao', body: event.data && event.data.text() }; }
   event.waitUntil((async () => {
     // Don't notify when a tab is open and visible: the page shows it itself.
     const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (tabs.some((c) => c.visibilityState === 'visible')) return;
-    await self.registration.showNotification(data.title || 'Baatcheet', {
+    await self.registration.showNotification(data.title || 'Lottery Pao', {
       body: data.body || '',
       tag: data.tag,
       icon: '/icon.svg',

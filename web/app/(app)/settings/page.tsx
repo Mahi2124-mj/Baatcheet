@@ -157,7 +157,7 @@ export default function SettingsPage() {
           <p className="pt-2 text-xs text-muted">
             {pushSupported()
               ? 'With the app closed or the phone asleep, calls arrive as a notification that opens the chat. Keep the app open to answer instantly.'
-              : 'This browser can’t notify a closed app. On iPhone, add Baatcheet to the Home Screen first.'}
+              : 'This browser can’t notify a closed app. On iPhone, add Lottery Pao to the Home Screen first.'}
           </p>
         </Card>
 

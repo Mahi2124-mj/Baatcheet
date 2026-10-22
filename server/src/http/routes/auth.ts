@@ -38,7 +38,7 @@ async function useToken(token: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD
 async function sendVerification(userId: string, to: string) {
   const token = await issueToken(userId, 'VERIFY_EMAIL', 48);
   const link = `${config.APP_URL}/verify-email?token=${encodeURIComponent(token)}`;
-  await sendMail(to, 'Verify your Baatcheet e-mail', `Welcome to Baatcheet!\n\nConfirm your e-mail address:\n${link}\n\nThe link works for 48 hours.`);
+  await sendMail(to, 'Verify your Lottery Pao e-mail', `Welcome to Lottery Pao!\n\nConfirm your e-mail address:\n${link}\n\nThe link works for 48 hours.`);
 }
 
 const listed = (list: string, value?: string) => !!value && list.split(',').map((s) => s.trim().toLowerCase()).includes(value);
@@ -142,7 +142,7 @@ auth.post('/forgot-password', strict, h(async (req, res) => {
   if (user && !user.suspendedAt) {
     const token = await issueToken(user.id, 'RESET_PASSWORD', 1);
     const link = `${config.APP_URL}/reset-password?token=${encodeURIComponent(token)}`;
-    await sendMail(email, 'Reset your Baatcheet password', `Someone asked to reset your password.\n\nSet a new one here (valid for 1 hour):\n${link}\n\nIf it wasn't you, ignore this e-mail.`).catch((err) =>
+    await sendMail(email, 'Reset your Lottery Pao password', `Someone asked to reset your password.\n\nSet a new one here (valid for 1 hour):\n${link}\n\nIf it wasn't you, ignore this e-mail.`).catch((err) =>
       req.log?.error({ err }, 'reset e-mail failed'),
     );
   }

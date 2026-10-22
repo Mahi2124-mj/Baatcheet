@@ -1,17 +1,11 @@
 'use client';
-// Start screen: just a picture; holding it for 5 seconds opens the app (see HoldToOpen).
+// Start screen: a phone launch advertisement. Holding the phone's camera ring for 5 seconds opens the app.
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { HoldToOpen } from '@/components/HoldToOpen';
+import { LaunchAd } from '@/components/LaunchAd';
 
 export default function Start() {
   const router = useRouter();
   useEffect(() => router.prefetch('/chats'), [router]);
-  return (
-    <main className="min-h-dvh">
-      <div className="h-dvh">
-        <HoldToOpen onOpen={() => router.replace('/chats')} />
-      </div>
-    </main>
-  );
+  return <LaunchAd onOpen={() => router.replace('/chats')} />;
 }

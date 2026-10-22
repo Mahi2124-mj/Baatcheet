@@ -5,7 +5,7 @@ export function Logo({ href = '/chats' }: { href?: string }) {
     <Link href={href} className="inline-flex items-center gap-2 font-bold tracking-tight">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/icon.svg" alt="" className="size-8" />
-      <span className="text-lg">Baatcheet</span>
+      <span className="text-lg">Lottery Pao</span>
     </Link>
   );
 }

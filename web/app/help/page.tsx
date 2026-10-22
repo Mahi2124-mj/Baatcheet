@@ -27,9 +27,9 @@ export default function Help() {
       </div>
       <section className="mt-8 rounded-2xl border border-line bg-panel p-5 text-sm">
         <h2 className="font-semibold">Still stuck?</h2>
-        <p className="mt-2 text-muted">Use “Report” inside the app for abuse, or contact the people who run this Baatcheet server. Include your browser, device and what happened.</p>
+        <p className="mt-2 text-muted">Use “Report” inside the app for abuse, or contact the people who run this Lottery Pao server. Include your browser, device and what happened.</p>
       </section>
-      <p className="mt-8 text-sm"><Link href="/chats" className="text-accent">← Back to Baatcheet</Link></p>
+      <p className="mt-8 text-sm"><Link href="/chats" className="text-accent">← Back to Lottery Pao</Link></p>
     </main>
   );
 }

@@ -160,7 +160,7 @@ export function CallLayer() {
   useEffect(() => {
     if (s.phase === 'incoming') document.title = `📞 ${s.title} is calling…`;
     else if (s.phase === 'connected') document.title = `📞 ${duration(secs)} · ${s.title}`;
-    else document.title = 'Baatcheet';
+    else document.title = 'Lottery Pao';
   }, [s.phase, s.title, secs]);
 
   if (s.phase === 'idle') return null;

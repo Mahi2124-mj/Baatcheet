@@ -48,7 +48,7 @@ const schema = z
     CALL_RING_SECONDS: z.coerce.number().int().min(5).max(120).default(45),
 
     SMTP_URL: z.string().optional(),
-    MAIL_FROM: z.string().default('Baatcheet <no-reply@localhost>'),
+    MAIL_FROM: z.string().default('Lottery Pao <no-reply@localhost>'),
 
 
     VAPID_PUBLIC_KEY: z.string().optional(),

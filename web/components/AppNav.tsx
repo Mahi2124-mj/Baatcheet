@@ -30,7 +30,7 @@ export function AppNav({ hiddenOnMobile }: { hiddenOnMobile: boolean }) {
         hiddenOnMobile && 'hidden md:flex',
       )}
     >
-      <Link href="/chats" className="mb-6 hidden md:block" aria-label="Baatcheet home">
+      <Link href="/chats" className="mb-6 hidden md:block" aria-label="Lottery Pao home">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/icon.svg" alt="" className="size-10" />
       </Link>
