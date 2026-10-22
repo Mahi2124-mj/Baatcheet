@@ -256,7 +256,7 @@ export function ChatView({ id }: { id: string }) {
   return (
     <div className="flex h-full">
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
-        <header className="safe-t flex items-center gap-2 border-b border-line bg-panel px-2 py-2 sm:px-4">
+        <header className="safe-t flex items-center gap-2 ios-bar border-b border-line/60 px-2 py-2 sm:px-4">
           <IconButton label="Back to chats" className="md:hidden" onClick={() => router.push('/chats')}>
             <ArrowLeft className="size-5" />
           </IconButton>
@@ -321,7 +321,7 @@ export function ChatView({ id }: { id: string }) {
         )}
         <div
           ref={scroller}
-          className="scroll-thin relative min-h-0 flex-1 overflow-y-auto py-3"
+          className="scroll-thin relative min-h-0 flex-1 overflow-y-auto bg-panel py-3"
           onScroll={(e) => {
             const el = e.currentTarget;
             setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ChevronRight, LogOut, Monitor, Moon, Sun } from 'lucide-react';
+import { Camera, ChevronRight, LogOut, Monitor, Moon, Smartphone, Sun } from 'lucide-react';
 import { api, errorText, uploadFile } from '@/lib/api';
 import { currentPush, disablePush, enablePush, pushSupported } from '@/lib/push';
 import { useSession } from '@/lib/session';
@@ -37,7 +37,7 @@ export default function SettingsPage() {
   const confirm = useConfirm();
   const [profile, setProfile] = useState({ displayName: me.displayName, username: me.username, bio: me.bio ?? '' });
   const [saving, setSaving] = useState(false);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'system' | 'dark' | 'light'>('system');
   const [push, setPush] = useState(false);
   const [sessions, setSessions] = useState<Sess[]>([]);
   const [pw, setPw] = useState<{ current: string; password: string } | null>(null);
@@ -45,7 +45,8 @@ export default function SettingsPage() {
   const file = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+    const t = document.documentElement.dataset.theme;
+    setTheme(t === 'light' || t === 'dark' ? t : 'system');
     currentPush().then((s) => setPush(Boolean(s)), () => {});
     api.get<Sess[]>('/auth/sessions').then(setSessions, () => {});
   }, []);
@@ -61,14 +62,15 @@ export default function SettingsPage() {
     }
   };
 
-  function applyTheme(t: 'dark' | 'light') {
+  function applyTheme(t: 'system' | 'dark' | 'light') {
     setTheme(t);
-    if (t === 'light') document.documentElement.dataset.theme = 'light';
-    else delete document.documentElement.dataset.theme;
+    if (t === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = t;
     try {
-      localStorage.setItem('bc-theme', t);
+      if (t === 'system') localStorage.removeItem('bc-theme');
+      else localStorage.setItem('bc-theme', t);
     } catch {
-      // Private mode: theme lasts for this visit only.
+      // Private mode: the choice lasts for this visit only.
     }
   }
 
@@ -130,7 +132,7 @@ export default function SettingsPage() {
 
         <Card title="Appearance">
           <div className="flex gap-2 py-2">
-            {([['dark', Moon, 'Dark'], ['light', Sun, 'Light']] as const).map(([t, Icon, label]) => (
+            {([['system', Smartphone, 'Automatic'], ['light', Sun, 'Light'], ['dark', Moon, 'Dark']] as const).map(([t, Icon, label]) => (
               <button key={t} onClick={() => applyTheme(t)} aria-pressed={theme === t} className={cx('flex flex-1 items-center justify-center gap-2 rounded-xl border py-3 text-sm', theme === t ? 'border-accent bg-accent-soft text-accent' : 'border-line')}>
                 <Icon className="size-4" /> {label}
               </button>

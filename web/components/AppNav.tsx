@@ -26,7 +26,7 @@ export function AppNav({ hiddenOnMobile }: { hiddenOnMobile: boolean }) {
     <nav
       aria-label="Main"
       className={cx(
-        'safe-b order-last flex shrink-0 border-t border-line bg-panel md:order-first md:w-[76px] md:flex-col md:items-center md:border-r md:border-t-0 md:py-4',
+        'ios-bar safe-b order-last flex shrink-0 border-t border-line/60 md:order-first md:w-[76px] md:flex-col md:items-center md:border-r md:border-t-0 md:py-4',
         hiddenOnMobile && 'hidden md:flex',
       )}
     >
@@ -42,14 +42,14 @@ export function AppNav({ hiddenOnMobile }: { hiddenOnMobile: boolean }) {
             aria-label={it.label}
             aria-current={active(it.href) ? 'page' : undefined}
             className={cx(
-              'relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] md:size-12 md:flex-none md:justify-center md:rounded-2xl md:py-0',
+              'relative flex flex-1 flex-col items-center gap-0.5 pb-1 pt-1.5 text-[10px] font-medium md:size-12 md:flex-none md:justify-center md:rounded-2xl md:py-0',
               active(it.href) ? 'text-accent md:bg-accent-soft' : 'text-muted hover:text-text md:hover:bg-hover',
             )}
           >
             <it.icon className="size-6" aria-hidden />
             <span className="md:hidden">{it.label}</span>
             {Boolean(it.badge) && (
-              <span className="absolute right-[calc(50%-22px)] top-1 min-w-5 rounded-full bg-accent px-1.5 text-center text-[11px] font-bold leading-5 text-accent-ink md:right-0 md:top-0">
+              <span className="absolute right-[calc(50%-22px)] top-0.5 min-w-5 rounded-full bg-danger px-1.5 text-center text-[11px] font-semibold leading-5 text-white md:right-0 md:top-0">
                 {it.badge! > 99 ? '99+' : it.badge}
               </span>
             )}

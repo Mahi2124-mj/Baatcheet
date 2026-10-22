@@ -13,13 +13,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
         ref={ref}
         disabled={disabled || loading}
         className={cx(
-          'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed select-none',
+          'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition active:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed select-none',
           size === 'sm' && 'h-8 px-3 text-sm',
           size === 'md' && 'h-10 px-4 text-sm',
           size === 'lg' && 'h-12 px-5 text-base',
           variant === 'primary' && 'bg-accent text-accent-ink hover:brightness-110',
-          variant === 'secondary' && 'bg-panel-2 text-text hover:bg-hover border border-line',
-          variant === 'ghost' && 'text-text hover:bg-hover',
+          variant === 'secondary' && 'bg-accent-soft text-accent hover:brightness-95',
+          variant === 'ghost' && 'text-accent hover:bg-hover',
           variant === 'danger' && 'bg-danger text-white hover:brightness-110',
           className,
         )}
@@ -250,9 +250,9 @@ export function Switch({ checked, onChange, label, description }: { checked: boo
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={cx('relative h-6 w-11 shrink-0 rounded-full transition', checked ? 'bg-accent' : 'bg-hover')}
+        className={cx('relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors duration-200', checked ? 'bg-ok' : 'bg-hover')}
       >
-        <span className={cx('absolute top-0.5 size-5 rounded-full bg-white transition', checked ? 'left-[22px]' : 'left-0.5')} />
+        <span className={cx('absolute top-[2px] size-[27px] rounded-full bg-white shadow-[0_3px_8px_rgba(0,0,0,0.15),0_1px_1px_rgba(0,0,0,0.16)] transition-[left] duration-200', checked ? 'left-[22px]' : 'left-[2px]')} />
       </button>
     </label>
   );
@@ -275,9 +275,9 @@ export function Select<T extends string>({ value, onChange, options, label }: { 
 
 export function Card({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
   return (
-    <section className={cx('rounded-2xl border border-line bg-panel p-5', className)}>
-      {title && <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{title}</h2>}
-      {children}
+    <section className={className}>
+      {title && <h2 className="mb-1.5 px-4 text-[13px] text-muted">{title}</h2>}
+      <div className="rounded-xl bg-panel px-4 py-2">{children}</div>
     </section>
   );
 }

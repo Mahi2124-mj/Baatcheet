@@ -81,7 +81,7 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
     <div id={`m-${m.id}`} className={cx('group flex px-3 py-0.5 sm:px-6', mine ? 'justify-end' : 'justify-start')}>
       <div className={cx('relative max-w-[85%] sm:max-w-[70%]', highlight && 'animate-pulse')}>
         <div
-          className={cx('rounded-2xl px-3 py-2 text-[15px] shadow-sm', mine ? 'rounded-br-md bg-bubble-me' : 'rounded-bl-md bg-bubble-them', deleted && 'italic text-muted')}
+          className={cx('rounded-[20px] px-3.5 py-2 text-[17px] leading-snug', mine ? 'rounded-br-[6px] bg-bubble-me text-bubble-me-ink' : 'rounded-bl-[6px] bg-bubble-them text-bubble-them-ink', deleted && 'italic opacity-70')}
           onContextMenu={(e) => {
             if (deleted || pending) return;
             e.preventDefault();
@@ -90,8 +90,8 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
         >
           {showSender && !mine && senderName && <p className="mb-0.5 text-xs font-semibold text-accent">{senderName}</p>}
           {m.replyTo && !deleted && (
-            <button onClick={() => onJump(m.replyTo!.id)} className="mb-1.5 block w-full rounded-lg border-l-4 border-accent bg-black/15 px-2 py-1 text-left text-xs">
-              <span className="block font-semibold text-accent">{replyName ?? 'Message'}</span>
+            <button onClick={() => onJump(m.replyTo!.id)} className={cx('mb-1.5 block w-full rounded-lg border-l-4 px-2 py-1 text-left text-xs', mine ? 'border-white/70 bg-white/20' : 'border-accent bg-hover/70')}>
+              <span className={cx('block font-semibold', mine ? 'text-white' : 'text-accent')}>{replyName ?? 'Message'}</span>
               <span className="line-clamp-2 opacity-80">{m.replyTo.body ?? 'Deleted message'}</span>
             </button>
           )}
@@ -103,7 +103,7 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
               {m.body && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.body}</p>}
             </>
           )}
-          <span className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-muted">
+          <span className={cx('mt-0.5 flex items-center justify-end gap-1 text-[11px]', mine ? 'text-white/75' : 'text-muted')}>
             {m.editedAt && !deleted && <span>edited</span>}
             <time dateTime={m.createdAt}>{clock(m.createdAt)}</time>
             {mine && tick && <Ticks tick={tick} />}

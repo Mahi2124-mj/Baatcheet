@@ -159,7 +159,7 @@ export function Composer({ conversationId, disabled, replyTo, replyName, editing
 
   return (
     <div
-      className="safe-b border-t border-line bg-panel"
+      className="ios-bar safe-b border-t border-line/60"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();

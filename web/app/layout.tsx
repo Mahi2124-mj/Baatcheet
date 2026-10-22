@@ -14,11 +14,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: 'cover',
   interactiveWidget: 'resizes-content',
-  themeColor: '#0d1016',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f2f2f7' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+  ],
 };
 
-// Sets the saved theme before the first paint (no flash).
-const themeScript = `try{var t=localStorage.getItem('bc-theme');if(t==='light')document.documentElement.dataset.theme='light'}catch(e){}`;
+// Sets a theme chosen in Settings before the first paint (no flash); otherwise the phone's setting applies.
+const themeScript = `try{var t=localStorage.getItem('bc-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
