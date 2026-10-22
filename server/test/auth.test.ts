@@ -133,6 +133,18 @@ describe('protection', () => {
     const u = await register(srv);
     const r = await u.agent.post('/api/auth/logout').set('Origin', 'https://evil.example');
     expect(r.status).toBe(403);
+    // A foreign page can't pass by pointing Host somewhere else either.
+    await u.agent.post('/api/auth/logout').set('Origin', 'https://evil.example').set('Host', 'chat.example.com').expect(403);
+  });
+
+  it('accepts the page’s own address even when APP_URL is stale (new tunnel link, LAN IP)', async () => {
+    const u = await register(srv);
+    // Origin host == the host the request was sent to → same site.
+    await u.agent.get('/api/auth/me').expect(200);
+    const r = await u.agent.post('/api/auth/logout').set('Origin', 'https://new-link.trycloudflare.com').set('Host', 'new-link.trycloudflare.com');
+    expect(r.status).toBe(200);
+    // Trailing slash / upper case in the configured origin don't matter.
+    await api(srv.http).post('/api/auth/logout').set('Origin', 'HTTP://LOCALHOST:3000/').expect(200);
   });
 
   it('requires a verified e-mail to start chats', async () => {

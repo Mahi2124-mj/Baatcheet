@@ -98,4 +98,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
 export const config = loadConfig();
 export const isProd = config.NODE_ENV === 'production';
-export const allowedOrigins = [config.APP_URL, ...config.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)];
+const normOrigin = (o: string) => o.trim().replace(/\/+$/, '').toLowerCase();
+export const allowedOrigins = [config.APP_URL, ...config.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)].map(normOrigin);
+
+/**
+ * Whether a browser Origin may use the API (CSRF check for requests and sockets).
+ * Allowed: APP_URL / CORS_ORIGINS / API_URL (trailing slash and case ignored), and any origin whose host
+ * is the host the request was sent to — the page and the API share one address behind Caddy, so this keeps
+ * working when the address changes (new trycloudflare link, LAN IP, localhost). Another site can't fake it:
+ * the browser sets Origin to the page that made the request.
+ */
+export function originAllowed(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return false;
+  const o = normOrigin(origin);
+  if (allowedOrigins.includes(o) || o === normOrigin(config.API_URL)) return true;
+  if (!host) return false;
+  try {
+    return new URL(o).host === host.trim().toLowerCase();
+  } catch {
+    return false;
+  }
+}

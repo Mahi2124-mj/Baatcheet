@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Session, User } from '@prisma/client';
 import { parseCookie } from 'cookie';
-import { allowedOrigins, config, isProd } from '../config.js';
+import { config, isProd, originAllowed } from '../config.js';
 import { prisma } from '../db.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
@@ -95,7 +95,7 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
 export function checkOrigin(req: Request, _res: Response, next: NextFunction) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   const origin = req.headers.origin;
-  if (origin && (allowedOrigins.includes(origin) || origin === config.API_URL)) return next();
+  if (originAllowed(origin, req.headers.host)) return next();
   // Upload PUTs are authorised by their signed URL, not the cookie.
   if (req.path.startsWith('/files/')) return next();
   next(forbidden('Request origin not allowed'));

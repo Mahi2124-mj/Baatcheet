@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
-import { allowedOrigins, config } from '../config.js';
+import { allowedOrigins, originAllowed } from '../config.js';
 import { prisma } from '../db.js';
 import { HttpError } from '../lib/errors.js';
 import { Bucket } from '../lib/rate.js';
@@ -45,7 +45,8 @@ const fail = (e: unknown) => ({ ok: false as const, error: e instanceof HttpErro
 
 export function createSocketServer(http: HttpServer): IO {
   const io: IO = new Server(http, {
-    cors: { origin: allowedOrigins, credentials: true },
+    // Cross-origin browsers: only the configured origins (same-address pages need no CORS).
+    cors: { origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin.replace(/\/+$/, '').toLowerCase())), credentials: true },
     maxHttpBufferSize: 256 * 1024,
     pingInterval: 20_000,
     pingTimeout: 20_000,
@@ -57,7 +58,7 @@ export function createSocketServer(http: HttpServer): IO {
   io.use(async (socket, next) => {
     try {
       const origin = socket.handshake.headers.origin;
-      if (origin && !allowedOrigins.includes(origin) && origin !== config.API_URL) return next(new Error('origin not allowed'));
+      if (origin && !originAllowed(origin, socket.handshake.headers.host)) return next(new Error('origin not allowed'));
       const s = await sessionFromCookie(socket.handshake.headers.cookie);
       if (!s) return next(new Error('unauthorized'));
       socket.data.userId = s.userId;

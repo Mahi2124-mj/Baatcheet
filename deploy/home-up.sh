@@ -15,8 +15,12 @@ docker image prune -f >/dev/null 2>&1 || true
 
 if [ "$MODE" = quick ]; then
   URL=""
+  # Only the link from the tunnel's current run: after a restart the log still holds the old one,
+  # and a stale APP_URL breaks every request ("Request origin not allowed").
+  CID="$(dc ps -q quicktunnel 2>/dev/null | head -1)"
+  SINCE="$(docker inspect -f '{{.State.StartedAt}}' "$CID" 2>/dev/null || true)"
   for _ in $(seq 1 60); do
-    URL="$(dc logs quicktunnel 2>/dev/null | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | tail -1 || true)"
+    URL="$(docker logs ${SINCE:+--since "$SINCE"} "$CID" 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | tail -1 || true)"
     [ -n "$URL" ] && break
     sleep 3
   done

@@ -38,7 +38,7 @@ export function createApp() {
   // CORS for the web app's origin(s); cookies are allowed only for these.
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && allowedOrigins.includes(origin)) {
+    if (origin && allowedOrigins.includes(origin.replace(/\/+$/, '').toLowerCase())) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Vary', 'Origin');
