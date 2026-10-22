@@ -19,6 +19,15 @@ export function getSocket(): AppSocket {
   return socket;
 }
 
+/** Disconnects but keeps the socket and its listeners, so resumeSocket() can bring it back. */
+export function pauseSocket() {
+  if (socket?.connected || socket?.active) socket.disconnect();
+}
+
+export function resumeSocket() {
+  if (socket && !socket.connected) socket.connect();
+}
+
 export function closeSocket() {
   socket?.disconnect();
   socket = null;

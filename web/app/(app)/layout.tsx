@@ -2,6 +2,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { backgroundEnabled, watchBackground } from '@/lib/background';
 import { resumePush } from '@/lib/push';
 import { bindRealtime, loadConversations, setNotificationHandlers } from '@/lib/realtime';
 import { SessionCtx } from '@/lib/session';
@@ -50,8 +51,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     void loadConversations().catch(() => {});
     api.get<{ unread: number }>('/notifications').then((r) => setState(() => ({ unreadNotifications: r.unread })), () => {});
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-    // Calls and messages also reach this device when no Baatcheet tab is open.
-    void resumePush().catch(() => {});
+    // Calls and messages also reach this device when no Baatcheet tab is open (unless
+    // "Run in background" is off here).
+    if (backgroundEnabled()) void resumePush().catch(() => {});
+    const unwatch = watchBackground();
+    return unwatch;
     // The id only changes on a different login.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id]);

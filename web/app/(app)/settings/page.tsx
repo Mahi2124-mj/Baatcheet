@@ -1,10 +1,11 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Camera, ChevronRight, LogOut, Monitor, Moon, Smartphone, Sun } from 'lucide-react';
 import { api, errorText, uploadFile } from '@/lib/api';
-import { currentPush, disablePush, enablePush, pushSupported } from '@/lib/push';
+import { disablePush, pushSupported } from '@/lib/push';
+import { backgroundEnabled, setBackground, subscribeBackground } from '@/lib/background';
 import { useSession } from '@/lib/session';
 import { closeSocket } from '@/lib/socket';
 import { resetStore } from '@/lib/store';
@@ -38,8 +39,8 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState({ displayName: me.displayName, username: me.username, bio: me.bio ?? '' });
   const [saving, setSaving] = useState(false);
   const [theme, setTheme] = useState<'system' | 'dark' | 'light'>('system');
-  const [push, setPush] = useState(false);
   const [sessions, setSessions] = useState<Sess[]>([]);
+  const background = useSyncExternalStore(subscribeBackground, backgroundEnabled, () => true);
   const [pw, setPw] = useState<{ current: string; password: string } | null>(null);
   const [del, setDel] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -47,7 +48,6 @@ export default function SettingsPage() {
   useEffect(() => {
     const t = document.documentElement.dataset.theme;
     setTheme(t === 'light' || t === 'dark' ? t : 'system');
-    currentPush().then((s) => setPush(Boolean(s)), () => {});
     api.get<Sess[]>('/auth/sessions').then(setSessions, () => {});
   }, []);
 
@@ -145,13 +145,19 @@ export default function SettingsPage() {
           <Switch label="Calls" description="Incoming and missed calls" checked={me.settings.notifyCalls} onChange={setPref('notifyCalls')} />
           <Switch label="Groups" description="When someone adds you to a group" checked={me.settings.notifyGroups} onChange={setPref('notifyGroups')} />
           <Switch
-            label="Push notifications on this device"
-            description={pushSupported() ? 'Get notified when no Baatcheet tab is open.' : 'Not supported in this browser.'}
-            checked={push}
-            onChange={(v) => run(async () => { if (v) await enablePush(); else await disablePush(); setPush(v); }, v ? 'Push notifications on' : 'Push notifications off')}
+            label="Run in background"
+            description={
+              background
+                ? `Calls and messages reach this phone while the app is in the background${pushSupported() ? ' or closed' : ''}.`
+                : 'Nothing arrives until you open the app; you’ll see everything you missed when you do.'
+            }
+            checked={background}
+            onChange={(v) => run(() => setBackground(v), v ? 'Running in background' : 'Background off')}
           />
           <p className="pt-2 text-xs text-muted">
-            Browsers can’t ring for calls when they are fully closed or the phone is asleep — you’ll get a push notification instead, which opens the chat. Keep a tab open (or install the app to your home screen) to answer calls instantly.
+            {pushSupported()
+              ? 'With the app closed or the phone asleep, calls arrive as a notification that opens the chat. Keep the app open to answer instantly.'
+              : 'This browser can’t notify a closed app. On iPhone, add Baatcheet to the Home Screen first.'}
           </p>
         </Card>
 
