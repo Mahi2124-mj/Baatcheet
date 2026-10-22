@@ -1,0 +1,32 @@
+# Home PC mode: docker compose -f docker-compose.yml -f docker-compose.home.yml --profile <named|quick> up -d --build
+# The site reaches the internet through a Cloudflare Tunnel, so the router needs no port forwarding.
+# Calls use a hosted TURN service (TURN_URLS + TURN_USERNAME / TURN_CREDENTIAL in .env).
+# deploy/install.sh with MODE=home sets all of this up.
+services:
+  caddy:
+    # Only reachable from this PC (http://localhost:8080) and through the tunnel.
+    ports: !override ["127.0.0.1:8080:80"]
+    restart: unless-stopped
+  postgres:
+    restart: unless-stopped
+  # Not used at home: TURN is hosted, there's no public IP for coturn or LiveKit, mail goes to SMTP.
+  coturn:
+    profiles: ["off"]
+  livekit:
+    profiles: ["off"]
+  mailpit:
+    profiles: ["off"]
+  # Your own domain on Cloudflare: Zero Trust → Networks → Tunnels → token in CLOUDFLARE_TUNNEL_TOKEN.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["named"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-missing}
+    depends_on: [caddy]
+    restart: unless-stopped
+  # No domain / no Cloudflare account: a free *.trycloudflare.com address that changes on every restart.
+  quicktunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["quick"]
+    command: tunnel --no-autoupdate --url http://caddy:80
+    depends_on: [caddy]
+    restart: unless-stopped

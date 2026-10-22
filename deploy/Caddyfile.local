@@ -1,0 +1,11 @@
+# One origin for the browser: the site, its API, files and the Socket.IO connection.
+:80 {
+	encode zstd gzip
+	@api path /api/* /files/* /socket.io/* /healthz /readyz
+	handle @api {
+		reverse_proxy server:4000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

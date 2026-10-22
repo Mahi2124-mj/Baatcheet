@@ -1,0 +1,22 @@
+# Production: Caddy gets and renews the HTTPS certificate for $DOMAIN automatically.
+# The domain's DNS (A record) must point to this server.
+{$DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+	@api path /api/* /files/* /socket.io/* /healthz /readyz
+	handle @api {
+		reverse_proxy server:4000
+	}
+	# LiveKit (group calls) runs on the host network; its client uses /rtc and /twirp.
+	@livekit path /rtc /rtc/* /twirp/*
+	handle @livekit {
+		reverse_proxy host.docker.internal:7880
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

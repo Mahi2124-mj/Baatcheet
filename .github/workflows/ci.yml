@@ -1,0 +1,231 @@
+name: Baatcheet
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore: ["docs/**", "**.md"]
+  pull_request:
+    paths-ignore: ["docs/**", "**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: baatcheet
+          POSTGRES_PASSWORD: baatcheet
+          POSTGRES_DB: baatcheet
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U baatcheet" --health-interval 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://baatcheet:baatcheet@localhost:5432/baatcheet_test
+      E2E_DATABASE_URL: postgresql://baatcheet:baatcheet@localhost:5432/baatcheet_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: server
+      - name: Typecheck
+        run: npm run typecheck
+      - name: API tests (auth, messaging, groups, uploads, calls, admin)
+        run: npm test
+      - name: Build API
+        run: npm run build -w server
+      - name: Build web app
+        run: npm run build -w web
+        env:
+          NEXT_PUBLIC_SOCKET_URL: http://localhost:4000
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+      - name: End-to-end tests (register, real-time chat, real WebRTC video call)
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: web/test-results
+          if-no-files-found: ignore
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check docker-compose.yml
+        run: |
+          cp .env.example .env && docker compose config -q
+          DOMAIN=chat.example.com TURN_EXTERNAL_IP=1.2.3.4/10.0.0.2 docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
+          bash -n deploy/install.sh && bash -n deploy/install-home.sh && bash -n deploy/home-up.sh
+          docker compose -f docker-compose.yml -f docker-compose.home.yml --profile quick config -q
+      - name: Build API image
+        run: docker build -f server/Dockerfile -t baatcheet-server .
+      - name: Build web image
+        run: docker build -f web/Dockerfile -t baatcheet-web .
+      - name: Start the full stack and check it answers
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/readyz && curl -fsS http://localhost:8080/ -o /dev/null; then echo "STACK UP"; break; fi
+            sleep 5
+          done
+          curl -fsS http://localhost:8080/readyz
+          curl -fsS -o /dev/null -w "register page %{http_code}\n" http://localhost:8080/register
+          docker compose ps
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+  # Home-PC mode end to end: the same script the owner runs, with a free trycloudflare.com tunnel.
+  home:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Settings like install-home.sh writes them (option b, no TURN)
+        run: |
+          cat > .env <<ENV
+          NODE_ENV=production
+          HOME_TUNNEL=quick
+          CLOUDFLARE_TUNNEL_TOKEN=
+          POSTGRES_PASSWORD=ci$(openssl rand -hex 8)
+          SESSION_SECRET=$(openssl rand -hex 32)
+          APP_URL=https://pending.invalid
+          API_URL=https://pending.invalid
+          TRUST_PROXY=true
+          CLIENT_IP_HEADER=cf-connecting-ip
+          ADMIN_EMAILS=admin@example.com
+          STORAGE_DRIVER=local
+          LOCAL_UPLOAD_DIR=/data/uploads
+          STUN_URLS=stun:stun.l.google.com:19302
+          TURN_URLS=
+          SMTP_URL=smtp://user:pass@localhost:2525
+          MAIL_FROM=Baatcheet <admin@example.com>
+          NEXT_PUBLIC_SOCKET_URL=
+          ENV
+          sed -i 's/^ *//' .env
+          echo "DATABASE_URL=postgresql://baatcheet:$(grep ^POSTGRES_PASSWORD= .env | cut -d= -f2)@postgres:5432/baatcheet" >> .env
+      - name: Start with deploy/home-up.sh
+        run: bash deploy/home-up.sh --build
+      - name: The site answers through the public tunnel address
+        run: |
+          URL=$(cat SITE-ADDRESS.txt); echo "$URL"
+          for i in $(seq 1 30); do curl -fsS "$URL/readyz" && break; sleep 5; done
+          curl -fsS "$URL/readyz"
+          curl -fsS -o /dev/null -w "register page %{http_code}\n" "$URL/register"
+          # Registering through the tunnel proves cookies, the origin check and the database.
+          curl -fsS -c jar -H "Origin: $URL" -H 'Content-Type: application/json' \
+            -d '{"email":"ci@example.com","password":"Password123","username":"ci_user","displayName":"CI"}' "$URL/api/auth/register" -o /dev/null -w "register %{http_code}\n"
+          curl -fsS -b jar "$URL/api/auth/me"; echo
+          # SMTP is deliberately unreachable here: sign-up must still work (verificationEmailSent=false).
+          # Socket.IO handshake through the tunnel
+          curl -fsS -b jar "$URL/socket.io/?EIO=4&transport=polling" | head -c 200; echo
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.home.yml --profile quick logs --tail=150
+
+  # After everything passed on main: publish ready-to-run images, so a server or PC needs no source code.
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, docker, home]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Server image (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/YOUR_GITHUB_USER/baatcheet-server:latest,ghcr.io/YOUR_GITHUB_USER/baatcheet-server:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+      - name: Web image (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/YOUR_GITHUB_USER/baatcheet-web:latest,ghcr.io/YOUR_GITHUB_USER/baatcheet-web:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: Images can be pulled without logging in
+        run: |
+          docker logout ghcr.io
+          for i in server web; do
+            if docker manifest inspect ghcr.io/YOUR_GITHUB_USER/baatcheet-$i:latest >/dev/null; then echo "baatcheet-$i is public ✅"
+            else echo "::warning::baatcheet-$i is private. GitHub → your profile → Packages → baatcheet-$i → Package settings → Change visibility → Public"; fi
+          done
+
+  # The owner's PC setup exactly: only the run files, no source code, images from ghcr.io, a real tunnel.
+  home-release:
+    needs: [publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy only the run files (what install-home.sh downloads)
+        run: |
+          mkdir -p /tmp/bc/deploy
+          cp docker-compose.yml docker-compose.home.yml docker-compose.release.yml /tmp/bc/
+          cp deploy/Caddyfile.local deploy/home-up.sh /tmp/bc/deploy/
+          cat > /tmp/bc/.env <<ENV
+          NODE_ENV=production
+          HOME_TUNNEL=quick
+          POSTGRES_PASSWORD=ci$(openssl rand -hex 8)
+          SESSION_SECRET=$(openssl rand -hex 32)
+          APP_URL=https://pending.invalid
+          API_URL=https://pending.invalid
+          TRUST_PROXY=true
+          CLIENT_IP_HEADER=cf-connecting-ip
+          STORAGE_DRIVER=local
+          LOCAL_UPLOAD_DIR=/data/uploads
+          SMTP_URL=smtp://user:pass@localhost:2525
+          MAIL_FROM=Baatcheet <admin@example.com>
+          ENV
+          sed -i 's/^ *//' /tmp/bc/.env
+          echo "DATABASE_URL=postgresql://baatcheet:$(grep ^POSTGRES_PASSWORD= /tmp/bc/.env | cut -d= -f2)@postgres:5432/baatcheet" >> /tmp/bc/.env
+          echo "BAATCHEET_TAG=${{ github.sha }}" >> /tmp/bc/.env
+      - name: Start from published images
+        working-directory: /tmp/bc
+        run: bash deploy/home-up.sh
+      - name: Reachable through the tunnel
+        working-directory: /tmp/bc
+        run: |
+          URL=$(cat SITE-ADDRESS.txt); echo "$URL"
+          for i in $(seq 1 30); do curl -fsS "$URL/readyz" && break; sleep 5; done
+          curl -fsS "$URL/readyz"; echo
+          curl -fsS -o /dev/null -w "home page %{http_code}\n" "$URL/"
+      - name: Logs on failure
+        if: failure()
+        working-directory: /tmp/bc
+        run: docker compose -f docker-compose.yml -f docker-compose.home.yml -f docker-compose.release.yml --profile quick logs --tail=150

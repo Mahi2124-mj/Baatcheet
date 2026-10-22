@@ -1,0 +1,420 @@
+// Baatcheet database. Run `npm run db:migrate` after changing this file.
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Visibility {
+  EVERYONE
+  CONTACTS
+  NOBODY
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MessageKind {
+  TEXT
+  SYSTEM
+  CALL
+}
+
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  ONGOING
+  ENDED
+  MISSED
+  REJECTED
+  BUSY
+  FAILED
+}
+
+enum TokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  ACTIONED
+  DISMISSED
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  emailVerifiedAt  DateTime?
+  /// SHA-256 of the user's personal login code (see services/loginCode.ts) and an encrypted copy to show it again.
+  loginCodeHash    String?   @unique
+  loginCodeEnc     String?
+  passwordHash     String
+  role             Role      @default(USER)
+  suspendedAt      DateTime?
+  suspendReason    String?
+  failedLogins     Int       @default(0)
+  lockedUntil      DateTime?
+  lastSeenAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  profile          UserProfile?
+  sessions         Session[]
+  tokens           AuthToken[]
+  contacts         Contact[]        @relation("ContactOwner")
+  contactOf        Contact[]        @relation("ContactTarget")
+  sentRequests     ContactRequest[] @relation("RequestFrom")
+  receivedRequests ContactRequest[] @relation("RequestTo")
+  blocks           BlockedUser[]    @relation("Blocker")
+  blockedBy        BlockedUser[]    @relation("Blocked")
+  memberships      ConversationMember[]
+  messages         Message[]
+  reactions        MessageReaction[]
+  callsStarted     Call[]
+  callParticipants CallParticipant[]
+  notifications    Notification[]
+  pushSubscriptions PushSubscription[]
+  reportsMade      UserReport[]     @relation("Reporter")
+  reportsAgainst   UserReport[]     @relation("ReportedUser")
+  invitationsMade  GroupInvitation[]
+  auditLogs        AuditLog[]
+  uploads          Upload[]
+
+  @@index([createdAt])
+}
+
+model UserProfile {
+  userId             String     @id
+  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username           String     @unique
+  displayName        String
+  bio                String?
+  avatarKey          String?
+  onboarded          Boolean    @default(false)
+  lastSeenVisibility Visibility @default(EVERYONE)
+  profileVisibility  Visibility @default(EVERYONE)
+  allowMessagesFrom  Visibility @default(EVERYONE)
+  readReceipts       Boolean    @default(true)
+  notifyMessages     Boolean    @default(true)
+  notifyCalls        Boolean    @default(true)
+  notifyGroups       Boolean    @default(true)
+  theme              String     @default("dark")
+
+  @@index([displayName])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the cookie token. The token itself is never stored.
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+model AuthToken {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   TokenPurpose
+  tokenHash String       @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  @@index([userId, purpose])
+}
+
+model Contact {
+  ownerId   String
+  owner     User     @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   User     @relation("ContactTarget", fields: [contactId], references: [id], onDelete: Cascade)
+  nickname  String?
+  createdAt DateTime @default(now())
+
+  @@id([ownerId, contactId])
+  @@index([contactId])
+}
+
+model ContactRequest {
+  id        String        @id @default(cuid())
+  fromId    String
+  from      User          @relation("RequestFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  to        User          @relation("RequestTo", fields: [toId], references: [id], onDelete: Cascade)
+  status    RequestStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([fromId, toId])
+  @@index([toId, status])
+}
+
+model BlockedUser {
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model Conversation {
+  id          String           @id @default(cuid())
+  type        ConversationType
+  /// For DIRECT chats: "<smaller user id>:<bigger user id>", so a pair has one chat.
+  directKey   String?          @unique
+  name        String?
+  avatarKey   String?
+  createdById String?
+  /// Only admins may post / change info when true.
+  adminsOnlyPost Boolean       @default(false)
+  adminsOnlyEdit Boolean       @default(true)
+  lastMessageAt  DateTime      @default(now())
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  members     ConversationMember[]
+  messages    Message[]
+  calls       Call[]
+  invitations GroupInvitation[]
+
+  @@index([lastMessageAt])
+}
+
+model ConversationMember {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           MemberRole   @default(MEMBER)
+  joinedAt       DateTime     @default(now())
+  /// Set when the member left or was removed; they keep read-only history up to then.
+  leftAt         DateTime?
+  lastReadAt      DateTime?
+  lastDeliveredAt DateTime?
+  pinnedAt       DateTime?
+  archivedAt     DateTime?
+  mutedUntil     DateTime?
+  /// Messages before this time are hidden for this member ("clear chat").
+  clearedAt      DateTime?
+
+  @@id([conversationId, userId])
+  @@index([userId, leftAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String?
+  sender         User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  /// Client-generated id; with senderId it makes re-sends after a reconnect idempotent.
+  clientId       String?
+  kind           MessageKind  @default(TEXT)
+  body           String?
+  replyToId      String?
+  replyTo        Message?     @relation("Reply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        Message[]    @relation("Reply")
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  attachments MessageAttachment[]
+  reactions   MessageReaction[]
+  reports     UserReport[]
+
+  @@unique([senderId, clientId])
+  @@index([conversationId, createdAt(sort: Desc)])
+}
+
+model MessageAttachment {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  key       String   @unique
+  kind      String
+  name      String
+  size      Int
+  mime      String
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+}
+
+/// An upload slot handed out by the server; a message may only use keys its sender uploaded.
+model Upload {
+  key       String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String
+  mime      String
+  size      Int
+  name      String
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+
+  @@index([userId, createdAt])
+}
+
+model MessageReaction {
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@id([messageId, userId, emoji])
+}
+
+model Call {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  initiatorId    String
+  initiator      User         @relation(fields: [initiatorId], references: [id], onDelete: Cascade)
+  type           CallType
+  status         CallStatus   @default(RINGING)
+  /// Group calls run on the SFU (LiveKit); this is its room name.
+  sfuRoom        String?
+  startedAt      DateTime     @default(now())
+  answeredAt     DateTime?
+  endedAt        DateTime?
+
+  participants CallParticipant[]
+
+  @@index([conversationId, startedAt])
+  @@index([initiatorId, startedAt])
+}
+
+model CallParticipant {
+  callId   String
+  call     Call      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedAt DateTime @default(now())
+  joinedAt DateTime?
+  leftAt   DateTime?
+  response String?
+
+  @@id([callId, userId])
+  @@index([userId, invitedAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model UserReport {
+  id             String       @id @default(cuid())
+  reporterId     String?
+  reporter       User?        @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  reportedUserId String?
+  reportedUser   User?        @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  messageId      String?
+  message        Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  conversationId String?
+  reason         String
+  details        String?
+  /// Copy of the reported message text, made only when the reporter (a participant) chose to report it.
+  evidence       String?
+  status         ReportStatus @default(OPEN)
+  resolution     String?
+  createdAt      DateTime     @default(now())
+  resolvedAt     DateTime?
+
+  @@index([status, createdAt])
+}
+
+model GroupInvitation {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  code           String       @unique
+  maxUses        Int?
+  uses           Int          @default(0)
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  targetType String?
+  targetId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}

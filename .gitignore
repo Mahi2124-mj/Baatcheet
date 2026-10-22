@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+.env
+.env.local
+*.log
+*.tsbuildinfo
+uploads
+test-uploads
+e2e-uploads
+test-results
+playwright-report
+coverage
+deploy/livekit.yaml
+deploy/turn-certs
+SITE-ADDRESS.txt

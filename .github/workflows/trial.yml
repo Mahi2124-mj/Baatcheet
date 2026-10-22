@@ -1,0 +1,77 @@
+name: Trial
+
+# A temporary live copy of Baatcheet for testing it on real phones before a server/PC is ready.
+# Run it from Actions → "Trial" → Run workflow. The address appears in the run's summary.
+# It stops after the chosen hours and everything in it (accounts, chats, files) is deleted.
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "How long to keep it running (1–5 hours)"
+        default: "3"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: baatcheet-trial
+  cancel-in-progress: true
+
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - name: Settings (trial, no e-mail needed, accounts count as verified)
+        run: |
+          cat > .env <<ENV
+          NODE_ENV=production
+          HOME_TUNNEL=quick
+          POSTGRES_PASSWORD=t$(openssl rand -hex 12)
+          SESSION_SECRET=$(openssl rand -hex 32)
+          APP_URL=https://pending.invalid
+          API_URL=https://pending.invalid
+          TRUST_PROXY=true
+          CLIENT_IP_HEADER=cf-connecting-ip
+          STORAGE_DRIVER=local
+          LOCAL_UPLOAD_DIR=/data/uploads
+          STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+          AUTO_VERIFY_EMAIL=true
+          ENV
+          sed -i 's/^ *//' .env
+          echo "DATABASE_URL=postgresql://baatcheet:$(grep ^POSTGRES_PASSWORD= .env | cut -d= -f2)@postgres:5432/baatcheet" >> .env
+      - name: Start
+        run: bash deploy/home-up.sh --build
+      - name: Address
+        run: |
+          URL=$(cat SITE-ADDRESS.txt)
+          echo "TRIAL ADDRESS: $URL"
+          {
+            echo "## Baatcheet trial is live"
+            echo
+            echo "**$URL**"
+            echo
+            echo "Open it on two phones, sign up with two accounts, add each other (Contacts → search the username), chat and call."
+            echo "It stops in ${{ inputs.hours }} hour(s); everything in it is deleted then."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Post the address on the issue "Baatcheet trial link"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          URL=$(cat SITE-ADDRESS.txt)
+          N=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search 'in:title "Baatcheet trial link"' --json number -q '.[0].number')
+          [ -n "$N" ] || N=$(gh issue create -R "$GITHUB_REPOSITORY" --title "Baatcheet trial link" --body "Each trial run posts its address here." | grep -o '[0-9]*$')
+          gh issue comment "$N" -R "$GITHUB_REPOSITORY" --body "Trial is live for ${{ inputs.hours }} hour(s) (until $(date -u -d "+${{ inputs.hours }} hours" '+%H:%M UTC')): $URL"
+      - name: Keep running
+        run: |
+          H="${{ inputs.hours }}"; case "$H" in 1|2|3|4|5) ;; *) H=3;; esac
+          URL=$(cat SITE-ADDRESS.txt)
+          END=$(( $(date +%s) + H * 3600 ))
+          while [ "$(date +%s)" -lt "$END" ]; do
+            sleep 300
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/readyz" || true)
+            echo "$(date -u +%H:%M) $URL /readyz → $code"
+          done
+          echo "Trial time is over."

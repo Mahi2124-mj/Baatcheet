@@ -1,0 +1,81 @@
+# Full local stack: docker compose up --build   → open http://localhost:8080
+# Mail: http://localhost:8025
+name: baatcheet
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: baatcheet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: baatcheet
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U baatcheet"]
+      interval: 5s
+      retries: 20
+
+  # Optional S3-compatible storage. Start with: docker compose --profile s3 up
+  # and set STORAGE_DRIVER=s3 in .env (the API creates the bucket itself).
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: ["s3"]
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-baatcheet}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-change-me-please}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+
+  mailpit:
+    image: axllent/mailpit:v1.24
+    ports: ["8025:8025"]
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    # Relay ports must be reachable from browsers. On Linux, `network_mode: host` is simplest.
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+    command: >
+      -n --log-file=stdout --listening-port=3478 --min-port=49160 --max-port=49200
+      --use-auth-secret --static-auth-secret=${TURN_SECRET} --realm=baatcheet
+      --fingerprint --no-cli --no-multicast-peers --no-tlsv1 --no-tlsv1_1
+      --denied-peer-ip=0.0.0.0-0.255.255.255 --denied-peer-ip=127.0.0.0-127.255.255.255
+      --denied-peer-ip=169.254.0.0-169.254.255.255
+
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    command: --dev --bind 0.0.0.0
+    ports: ["7880:7880", "7881:7881", "7882:7882/udp"]
+
+  server:
+    build: { context: ., dockerfile: server/Dockerfile }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://baatcheet:${POSTGRES_PASSWORD}@postgres:5432/baatcheet
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes: [uploads:/data/uploads]
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-}
+    depends_on: [server]
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.9-alpine
+    ports: ["8080:80"]
+    volumes: [./deploy/Caddyfile.local:/etc/caddy/Caddyfile:ro]
+    depends_on: [web, server]
+
+volumes:
+  pgdata:
+  miniodata:
+  uploads:

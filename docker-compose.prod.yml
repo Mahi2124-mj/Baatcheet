@@ -1,0 +1,41 @@
+# Production overrides: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# See docs/DEPLOYMENT.md, or let deploy/install.sh do everything on a fresh Ubuntu server.
+services:
+  caddy:
+    ports: !override ["80:80", "443:443", "443:443/udp"]
+    volumes: !override
+      - ./deploy/Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped
+  minio:
+    # Only with --profile s3. Don't expose MinIO's console publicly; prefer a managed S3.
+    ports: !override ["127.0.0.1:9000:9000"]
+  mailpit:
+    # Not used in production (set SMTP_URL to a real provider); keep it unreachable.
+    ports: !reset []
+  coturn:
+    # Host networking: TURN needs many UDP ports and the server's real public IP.
+    network_mode: host
+    ports: !reset []
+    command: >
+      -n --log-file=stdout --listening-port=3478
+      --min-port=49160 --max-port=49999 --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP}
+      --use-auth-secret --static-auth-secret=${TURN_SECRET} --realm=${TURN_REALM:-baatcheet}
+      --fingerprint --no-cli --no-multicast-peers --no-tlsv1 --no-tlsv1_1
+      --denied-peer-ip=10.0.0.0-10.255.255.255 --denied-peer-ip=172.16.0.0-172.31.255.255
+      --denied-peer-ip=192.168.0.0-192.168.255.255 --denied-peer-ip=127.0.0.0-127.255.255.255
+      --denied-peer-ip=0.0.0.0-0.255.255.255 --denied-peer-ip=169.254.0.0-169.254.255.255
+    restart: unless-stopped
+  livekit:
+    command: --config /etc/livekit.yaml
+    network_mode: host
+    ports: !reset []
+    volumes: ["./deploy/livekit.yaml:/etc/livekit.yaml:ro"]
+    restart: unless-stopped
+  postgres:
+    restart: unless-stopped
+volumes:
+  caddydata:
