@@ -9,6 +9,24 @@ function b64ToBytes(b64: string) {
 
 export const pushSupported = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
+// Remembers that push was switched off in Settings on this device, so it isn't turned back on by itself.
+const OFF_KEY = 'bc:push-off';
+function rememberOff(off: boolean) {
+  try {
+    if (off) localStorage.setItem(OFF_KEY, '1');
+    else localStorage.removeItem(OFF_KEY);
+  } catch {
+    // Storage blocked (private mode): nothing to remember.
+  }
+}
+function switchedOff() {
+  try {
+    return localStorage.getItem(OFF_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export async function currentPush() {
   if (!pushSupported()) return null;
   const reg = await navigator.serviceWorker.getRegistration();
@@ -25,9 +43,20 @@ export async function enablePush() {
   await navigator.serviceWorker.ready;
   const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) }));
   await api.post('/push/subscribe', sub.toJSON());
+  rememberOff(false);
+}
+
+/**
+ * Keeps push on for this device without asking again: once notifications are allowed it subscribes
+ * (or re-sends the existing subscription), unless push was switched off in Settings here.
+ */
+export async function resumePush() {
+  if (!pushSupported() || Notification.permission !== 'granted' || switchedOff()) return;
+  await enablePush();
 }
 
 export async function disablePush() {
+  rememberOff(true);
   const sub = await currentPush();
   if (!sub) return;
   await api.post('/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
