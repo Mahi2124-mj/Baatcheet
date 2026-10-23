@@ -8,7 +8,7 @@ import { useSession } from '@/lib/session';
 import type { Me } from '@/lib/types';
 import { Avatar, Button, Input, useToast } from '@/components/ui';
 import { PinFields, pinFormError } from '@/components/PinSettings';
-import { rememberLogin } from '@/lib/quickLogin';
+import { markUnlocked, rememberLogin } from '@/lib/quickLogin';
 
 export default function Onboarding() {
   const { me, setMe } = useSession();
@@ -30,6 +30,7 @@ export default function Onboarding() {
       if (pin) {
         await api.put<Me>('/auth/pin', { pin });
         rememberLogin(me.username, true);
+        markUnlocked(me.id);
       }
       setMe(await api.patch<Me>('/users/me', { displayName: name, bio, onboarded: true }));
       if ('Notification' in window && Notification.permission === 'default') {

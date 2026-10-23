@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { api, errorText } from '@/lib/api';
-import { pinProblem, rememberLogin } from '@/lib/quickLogin';
+import { markUnlocked, pinProblem, rememberLogin } from '@/lib/quickLogin';
 import { useSession } from '@/lib/session';
 import type { Me } from '@/lib/types';
 import { Button, Input, Modal, useConfirm, useToast } from '@/components/ui';
@@ -40,6 +40,7 @@ export function PinSettings() {
       const next = await api.put<Me>('/auth/pin', { pin });
       setMe(next);
       rememberLogin(next.username, true);
+      markUnlocked(next.id);
       toast(me.hasPin ? 'PIN changed' : 'PIN set — next time just enter it to log in', 'ok');
       setOpen(false);
     } catch (e) {

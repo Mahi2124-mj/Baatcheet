@@ -13,7 +13,7 @@ import { cx, timeShort } from '@/lib/format';
 import type { Me } from '@/lib/types';
 import { Avatar, Button, Card, Input, Modal, Switch, useConfirm, useToast } from '@/components/ui';
 import { PinSettings } from '@/components/PinSettings';
-import { forgetLogin } from '@/lib/quickLogin';
+import { clearUnlocked, forgetLogin } from '@/lib/quickLogin';
 import { PageHeader } from '@/components/PageHeader';
 
 interface Sess {
@@ -77,6 +77,7 @@ export default function SettingsPage() {
   async function logout() {
     await disablePush().catch(() => {});
     await api.post('/auth/logout').catch(() => {});
+    clearUnlocked();
     closeSocket();
     resetStore();
     router.replace('/login');

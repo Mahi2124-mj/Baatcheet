@@ -33,3 +33,32 @@ export function pinProblem(pin: string): string | null {
   if (/^(\d)\1+$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) return 'Too easy to guess — choose another PIN';
   return null;
 }
+
+// ----- unlock per tab -----
+// sessionStorage lives as long as the tab: a reload keeps the app unlocked, a new tab (or reopening the
+// app after closing it) asks for the PIN again.
+const UNLOCK_KEY = 'bc-unlocked';
+
+export function isUnlocked(userId: string) {
+  try {
+    return sessionStorage.getItem(UNLOCK_KEY) === userId;
+  } catch {
+    return false;
+  }
+}
+
+export function markUnlocked(userId: string) {
+  try {
+    sessionStorage.setItem(UNLOCK_KEY, userId);
+  } catch {
+    // Storage blocked: the PIN is asked again on reload.
+  }
+}
+
+export function clearUnlocked() {
+  try {
+    sessionStorage.removeItem(UNLOCK_KEY);
+  } catch {
+    // Nothing stored.
+  }
+}

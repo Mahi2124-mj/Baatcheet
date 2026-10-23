@@ -200,6 +200,22 @@ describe('protection', () => {
     await api(srv.http).post('/api/auth/login').send({ username: u.username, password: u.password }).expect(200);
   });
 
+  it('unlocks a logged-in device with the PIN; 5 wrong PINs log the device out', async () => {
+    const u = await register(srv);
+    // No PIN set: nothing to unlock.
+    expect((await u.agent.post('/api/auth/pin/verify').send({ pin: '0000' }).expect(200)).body).toEqual({ ok: true, hasPin: false });
+    await u.agent.put('/api/auth/pin').send({ pin: '4826' }).expect(200);
+    await api(srv.http).post('/api/auth/pin/verify').send({ pin: '4826' }).expect(401);
+    expect((await u.agent.post('/api/auth/pin/verify').send({ pin: '4826' }).expect(200)).body.hasPin).toBe(true);
+    for (let i = 0; i < 4; i++) await u.agent.post('/api/auth/pin/verify').send({ pin: '1357' }).expect(401);
+    const last = await u.agent.post('/api/auth/pin/verify').send({ pin: '1357' }).expect(401);
+    expect(last.body.code).toBe('pin_locked');
+    // This device is logged out and the PIN is gone; the password still works.
+    await u.agent.get('/api/auth/me').expect(401);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).pinHash).toBeNull();
+    await api(srv.http).post('/api/auth/login').send({ username: u.username, password: u.password }).expect(200);
+  });
+
   it('refuses the PIN of a suspended account', async () => {
     const u = await register(srv);
     await u.agent.put('/api/auth/pin').send({ pin: '4826' }).expect(200);

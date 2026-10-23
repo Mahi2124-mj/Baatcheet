@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { api, errorText } from '@/lib/api';
-import { forgetLogin, lastLogin, rememberLogin } from '@/lib/quickLogin';
+import { forgetLogin, lastLogin, markUnlocked, rememberLogin } from '@/lib/quickLogin';
 import type { Me } from '@/lib/types';
 import { Button, Input } from '@/components/ui';
 import { cx } from '@/lib/format';
@@ -32,6 +32,7 @@ function LoginForm() {
 
   const done = (me: Me) => {
     rememberLogin(me.username, me.hasPin);
+    markUnlocked(me.id);
     router.replace(!me.onboarded ? '/onboarding' : next && next.startsWith('/') && !next.startsWith('//') ? next : '/chats');
   };
 

@@ -187,24 +187,53 @@ auth.post('/pin-login', limit(15 * 60_000, 20), h(async (req, res) => {
     await verifyPassword(await dummyHash(), input.pin);
     throw unauthorized(user ? 'No PIN is set for this account. Log in with your password, then set a PIN in Settings.' : 'Wrong username or PIN');
   }
+  await checkPin(user, input.pin, req.ip, 'Wrong username or PIN');
+  if (user.suspendedAt) throw new HttpError(403, 'This account is suspended', 'suspended');
+  await createSession(res, req, user.id);
+  res.json(await mePayload(user.id));
+}));
+
+/**
+ * Checks a PIN and counts wrong ones. A 4-digit PIN is short, so it only gets a few tries in a row; then
+ * the PIN is removed and the password is needed again. Throws on a wrong PIN.
+ */
+async function checkPin(user: { id: string; pinHash: string | null; pinFails: number; lockedUntil: Date | null }, pin: string, ip: string | undefined, wrong: string) {
   if (user.lockedUntil && user.lockedUntil > new Date()) {
     throw new HttpError(429, 'Too many failed attempts. Try again in a few minutes.', 'locked');
   }
-  if (!/^\d{4,6}$/.test(input.pin) || !(await verifyPassword(user.pinHash, input.pin))) {
-    const fails = user.pinFails + 1;
-    // A 4-digit PIN is short, so it only gets a few tries; then the password is needed again.
-    if (fails >= MAX_PIN_FAILS) {
-      await prisma.user.update({ where: { id: user.id }, data: { pinHash: null, pinFails: 0 } });
-      await audit(user.id, 'pin.locked', 'user', user.id, req.ip);
-      throw new HttpError(401, 'Too many wrong PINs, so PIN login is now off. Log in with your password and set a new PIN.', 'pin_locked');
-    }
-    await prisma.user.update({ where: { id: user.id }, data: { pinFails: fails } });
-    throw unauthorized(`Wrong username or PIN (${MAX_PIN_FAILS - fails} ${MAX_PIN_FAILS - fails === 1 ? 'try' : 'tries'} left)`);
+  if (user.pinHash && /^\d{4,6}$/.test(pin) && (await verifyPassword(user.pinHash, pin))) {
+    if (user.pinFails) await prisma.user.update({ where: { id: user.id }, data: { pinFails: 0 } });
+    return;
   }
-  if (user.suspendedAt) throw new HttpError(403, 'This account is suspended', 'suspended');
-  await prisma.user.update({ where: { id: user.id }, data: { pinFails: 0 } });
-  await createSession(res, req, user.id);
-  res.json(await mePayload(user.id));
+  const fails = user.pinFails + 1;
+  if (fails >= MAX_PIN_FAILS) {
+    await prisma.user.update({ where: { id: user.id }, data: { pinHash: null, pinFails: 0 } });
+    await audit(user.id, 'pin.locked', 'user', user.id, ip);
+    throw new HttpError(401, 'Too many wrong PINs, so PIN login is now off. Log in with your password and set a new PIN.', 'pin_locked');
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { pinFails: fails } });
+  throw unauthorized(`${wrong} (${MAX_PIN_FAILS - fails} ${MAX_PIN_FAILS - fails === 1 ? 'try' : 'tries'} left)`);
+}
+
+/**
+ * Unlock: a logged-in device asks for the PIN each time the app is opened in a new tab. Five wrong PINs
+ * remove the PIN and log this device out, so the password is needed to get back in.
+ */
+auth.post('/pin/verify', requireAuth, limit(15 * 60_000, 30), h(async (req, res) => {
+  const { pin } = parse(z.object({ pin: z.string().max(12) }), req.body);
+  const user = me(req);
+  if (!user.pinHash) return res.json({ ok: true, hasPin: false });
+  try {
+    await checkPin(user, pin, req.ip, 'Wrong PIN');
+  } catch (e) {
+    if (e instanceof HttpError && e.code === 'pin_locked') {
+      await prisma.session.update({ where: { id: req.session!.id }, data: { revokedAt: new Date() } });
+      disconnectSession(req.session!.id);
+      clearSessionCookie(res);
+    }
+    throw e;
+  }
+  res.json({ ok: true, hasPin: true });
 }));
 
 auth.put('/pin', requireAuth, strict, h(async (req, res) => {

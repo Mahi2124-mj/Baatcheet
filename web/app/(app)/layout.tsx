@@ -13,19 +13,29 @@ import { useToast } from '@/components/ui';
 import { AppNav } from '@/components/AppNav';
 import { CallLayer } from '@/components/call/CallLayer';
 import { Logo } from '@/components/Logo';
+import { PinLock } from '@/components/PinLock';
+import { isUnlocked } from '@/lib/quickLogin';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const path = usePathname();
   const toast = useToast();
   const [me, setMe] = useState<Me | null>(null);
+  // PIN asked once per tab (see PinLock); null until the account is loaded.
+  const [unlocked, setUnlocked] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     setMe(await api.get<Me>('/auth/me'));
   }, []);
 
   useEffect(() => {
-    api.get<Me>('/auth/me').then(setMe, () => router.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`));
+    api.get<Me>('/auth/me').then(
+      (m) => {
+        setUnlocked(!m.hasPin || isUnlocked(m.id));
+        setMe(m);
+      },
+      () => router.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`),
+    );
     const out = () => {
       closeSocket();
       resetStore();
@@ -36,12 +46,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   useEffect(() => {
-    if (!me) return;
+    if (!me || !unlocked) return;
     if (!me.onboarded && path !== '/onboarding') router.replace('/onboarding');
-  }, [me, path, router]);
+  }, [me, path, router, unlocked]);
 
   useEffect(() => {
-    if (!me) return;
+    // Nothing (messages, calls, notifications) starts until the PIN was entered in this tab.
+    if (!me || !unlocked) return;
     getSocket();
     bindRealtime(me.id);
     setNotificationHandlers(
@@ -58,7 +69,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return unwatch;
     // The id only changes on a different login.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.id]);
+  }, [me?.id, unlocked]);
 
   if (!me) {
     return (
@@ -69,6 +80,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+
+  if (!unlocked) return <PinLock me={me} onUnlock={() => setUnlocked(true)} onLoggedOut={() => router.replace('/login')} />;
 
   const inChat = /^\/chats\/[^/]+/.test(path);
   return (
