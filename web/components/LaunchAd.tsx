@@ -1,8 +1,6 @@
 'use client';
 // The start screen: a phone launch advertisement for a made-up brand ("Orbit 7 Pro"). It is an ordinary
-// looking product page; holding the camera ring of the phone in the first screen for 5 seconds opens the
-// app. Nothing on the page reacts to that hold, so it gives nothing away.
-import { useLongPress } from './HoldToOpen';
+// looking product page; a tap anywhere on the big phone in the first screen opens the app.
 
 const COLORS = [
   { name: 'Copper Dawn', body: ['#c98a5e', '#7b4a2d'] },
@@ -21,7 +19,6 @@ const SPECS = [
 ] as const;
 
 export function LaunchAd({ onOpen }: { onOpen: () => void }) {
-  const hold = useLongPress(onOpen, 5000);
   const toTop = (id: string) => () => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 
   return (
@@ -57,10 +54,14 @@ export function LaunchAd({ onOpen }: { onOpen: () => void }) {
           </div>
           <p className="relative mt-3 text-[13px] text-white/50">From ₹1,19,900 or ₹9,992/mo. for 12 mo.*</p>
 
-          <div className="relative mx-auto mt-10 w-[230px] sm:w-[270px]">
+          {/* Tapping the phone opens the app straight away. */}
+          <div
+            className="relative mx-auto mt-10 w-[230px] select-none sm:w-[270px]"
+            style={{ WebkitTouchCallout: 'none', WebkitTapHighlightColor: 'transparent' }}
+            onClick={onOpen}
+            onContextMenu={(e) => e.preventDefault()}
+          >
             <Phone body={COLORS[0].body} />
-            {/* The camera ring: hold 5 s to open. Positioned over the ring drawn in <Phone>. */}
-            <div className="absolute left-[19%] top-[6.5%] aspect-square w-[62%] rounded-full" aria-hidden {...hold} />
           </div>
         </section>
 

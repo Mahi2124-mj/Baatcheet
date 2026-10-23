@@ -1,5 +1,5 @@
 'use client';
-// Start screen: a phone launch advertisement. Holding the phone's camera ring for 5 seconds opens the app.
+// Start screen: a phone launch advertisement. A tap on the big phone opens the app.
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { LaunchAd } from '@/components/LaunchAd';
