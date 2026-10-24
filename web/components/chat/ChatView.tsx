@@ -1,16 +1,18 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, Info, Phone, Search, Video, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Eraser, Info, MoreVertical, Palette, Phone, Search, Video, X } from 'lucide-react';
 import { api, ApiError, errorText } from '@/lib/api';
 import { calls } from '@/lib/calls';
 import { cx, dayLabel, lastSeen, newClientId } from '@/lib/format';
 import { refreshConversation, setActiveConversation } from '@/lib/realtime';
 import { useMe } from '@/lib/session';
 import { emitAck, getSocket } from '@/lib/socket';
-import { addPending, failPending, getState, hideMessage, patchConversation, upsertMessages, useStore } from '@/lib/store';
+import { addPending, clearThread, failPending, getState, hideMessage, patchConversation, upsertMessages, useStore } from '@/lib/store';
+import { bubbleColor, useChatTheme } from '@/lib/chatTheme';
 import type { Message } from '@/lib/types';
-import { Avatar, Empty, ErrorBox, IconButton, Skeleton, Spinner, useConfirm, useToast } from '../ui';
+import { Avatar, Empty, ErrorBox, IconButton, Modal, Skeleton, Spinner, useConfirm, useToast } from '../ui';
+import { ChatThemePicker } from './ChatThemePicker';
 import { Composer, type Outgoing } from './Composer';
 import { InfoPanel } from './InfoPanel';
 import { MessageBubble, type Tick } from './MessageBubble';
@@ -42,6 +44,9 @@ export function ChatView({ id }: { id: string }) {
   const [info, setInfo] = useState(false);
   const [report, setReport] = useState<Message | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const chatTheme = useChatTheme(id);
   const [searchQ, setSearchQ] = useState('');
   const [searchHits, setSearchHits] = useState<Message[] | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -179,6 +184,17 @@ export function ChatView({ id }: { id: string }) {
     [id, toast],
   );
 
+  async function clearChat() {
+    if (!(await confirm({ title: 'Clear this chat?', text: 'All messages disappear for you. The other person keeps theirs.', confirm: 'Clear chat', danger: true }))) return;
+    try {
+      await api.post(`/conversations/${id}/clear`);
+      clearThread(id);
+      toast('Chat cleared', 'ok');
+    } catch (e) {
+      toast(errorText(e), 'error');
+    }
+  }
+
   const hide = useCallback(
     async (m: Message) => {
       hideMessage(id, m.id);
@@ -309,6 +325,39 @@ export function ChatView({ id }: { id: string }) {
           <IconButton label="Chat info" onClick={() => setInfo((v) => !v)} active={info} className="hidden lg:inline-flex">
             <Info className="size-5" />
           </IconButton>
+          {conv && (
+            <div className="relative">
+              <IconButton label="More" onClick={() => setMoreOpen((v) => !v)} active={moreOpen}>
+                <MoreVertical className="size-5" />
+              </IconButton>
+              {moreOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} aria-hidden />
+                  <div role="menu" className="absolute right-0 top-full z-40 mt-1 w-52 rounded-xl border border-line bg-panel p-1 shadow-2xl">
+                    {[
+                      { label: 'Chat info', icon: Info, run: () => setInfo(true) },
+                      { label: 'Search', icon: Search, run: () => setSearchOpen(true) },
+                      { label: 'Chat theme', icon: Palette, run: () => setThemeOpen(true) },
+                      { label: 'Clear chat', icon: Eraser, run: () => void clearChat(), danger: true },
+                    ].map((x) => (
+                      <button
+                        key={x.label}
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreOpen(false);
+                          x.run();
+                        }}
+                        className={cx('flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-hover', x.danger && 'text-danger')}
+                      >
+                        <x.icon className="size-4" />
+                        {x.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </header>
         {groupCall && (
           <button onClick={() => startCall(groupCall.type)} className="bg-ok/15 px-4 py-2 text-sm font-medium text-ok">
@@ -340,7 +389,8 @@ export function ChatView({ id }: { id: string }) {
         )}
         <div
           ref={scroller}
-          className="scroll-thin relative min-h-0 flex-1 overflow-y-auto bg-panel py-3"
+          className={cx('scroll-thin relative min-h-0 flex-1 overflow-y-auto py-3', `wp-${chatTheme.wallpaper}`)}
+          style={{ '--bubble-me': bubbleColor(chatTheme.bubble) } as React.CSSProperties}
           onScroll={(e) => {
             const el = e.currentTarget;
             setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
@@ -425,6 +475,9 @@ export function ChatView({ id }: { id: string }) {
       </div>
       {info && conv && <InfoPanel conv={conv} onClose={() => setInfo(false)} onReportUser={() => setReport({ id: '', senderId: other?.id ?? null } as Message)} />}
       <ReportDialog target={report} conversationId={id} onClose={() => setReport(null)} />
+      <Modal open={themeOpen} onClose={() => setThemeOpen(false)} title="Chat theme">
+        <ChatThemePicker conversationId={id} />
+      </Modal>
     </div>
   );
 }

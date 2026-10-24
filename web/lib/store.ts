@@ -97,6 +97,25 @@ function sortMessages(list: Message[]) {
 /** Messages removed with "Delete for me" in this tab, so a later update (reaction, edit) can't bring them back. */
 const hiddenIds = new Set<string>();
 
+/** "Clear chat": empties the thread and the chat list preview (for this user only). */
+export function clearThread(conversationId: string) {
+  setState((s) => {
+    const conv = s.conversations[conversationId];
+    return {
+      threads: { ...s.threads, [conversationId]: { ...emptyThread(), loaded: true } },
+      ...(conv ? { conversations: { ...s.conversations, [conversationId]: { ...conv, lastMessage: null, unread: 0 } } } : {}),
+    };
+  });
+}
+
+/** "Clear all chats". */
+export function clearAllThreads() {
+  setState((s) => ({
+    threads: Object.fromEntries(Object.keys(s.threads).map((id) => [id, { ...emptyThread(), loaded: true }])),
+    conversations: Object.fromEntries(Object.entries(s.conversations).map(([id, c]) => [id, { ...c, lastMessage: null, unread: 0 }])),
+  }));
+}
+
 /** "Delete for me": takes a message out of the thread. */
 export function hideMessage(conversationId: string, messageId: string) {
   hiddenIds.add(messageId);

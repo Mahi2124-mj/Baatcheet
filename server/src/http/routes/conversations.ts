@@ -183,6 +183,12 @@ conversations.patch('/:id/me', h(async (req, res) => {
   res.json(await summary(self, m.conversationId));
 }));
 
+/** Clears every chat for this user only (like "Clear all chats" in other apps); others keep their messages. */
+conversations.post('/clear-all', h(async (req, res) => {
+  const r = await prisma.conversationMember.updateMany({ where: { userId: me(req).id }, data: { clearedAt: new Date() } });
+  res.json({ ok: true, count: r.count });
+}));
+
 conversations.post('/:id/clear', h(async (req, res) => {
   const self = me(req).id;
   const m = await anyMember(self, req.params.id);

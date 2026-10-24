@@ -124,6 +124,21 @@ describe('direct messages', () => {
     expect(convs.find((x: { id: string }) => x.id === convId).lastMessage.id).toBe(first.id);
   });
 
+  it('clears one chat or all chats for one person only', async () => {
+    const { a, b, convId } = await pair();
+    await send(a, convId, 'hello').expect(201);
+    const list = async (u: TestUser) => (await u.agent.get(`/api/conversations/${convId}/messages`).expect(200)).body.messages.length;
+    await b.agent.post(`/api/conversations/${convId}/clear`).expect(200);
+    expect(await list(b)).toBe(0);
+    expect(await list(a)).toBe(1);
+    await send(a, convId, 'again').expect(201);
+    expect(await list(b)).toBe(1);
+    const r = await b.agent.post('/api/conversations/clear-all').expect(200);
+    expect(r.body.count).toBeGreaterThanOrEqual(1);
+    expect(await list(b)).toBe(0);
+    expect(await list(a)).toBe(2);
+  });
+
   it('read receipts, typing and presence', async () => {
     const { a, b, convId } = await pair();
     const sa = await connect(srv, a);

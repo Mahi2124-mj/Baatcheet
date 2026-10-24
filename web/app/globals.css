@@ -20,6 +20,12 @@
   --danger: #ff3b30;        /* systemRed */
   --ok: #34c759;            /* systemGreen */
   --bar: rgba(249, 249, 249, 0.82); /* translucent tab / navigation bars */
+  /* Chat wallpapers (Settings → Chat theme) */
+  --wp-soft: linear-gradient(180deg, #eef3fb 0%, #f7eff6 100%);
+  --wp-doodle: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27140%27%20height%3D%27140%27%20viewBox%3D%270%200%20140%20140%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%235b6b85%27%20stroke-opacity%3D%270.16%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M14%2022h22a6%206%200%200%201%206%206v8a6%206%200%200%201-6%206H26l-6%205v-5h-6a6%206%200%200%201-6-6v-8a6%206%200%200%201%206-6z%27%2F%3E%3Cpath%20d%3D%27M98%2018l3%206%206.5%201-4.7%204.6%201.1%206.4-5.9-3.1-5.9%203.1%201.1-6.4-4.7-4.6%206.5-1z%27%2F%3E%3Cpath%20d%3D%27M60%2070c0-6%208-9%2012-3%204-6%2012-3%2012%203%200%207-12%2013-12%2013s-12-6-12-13z%27%2F%3E%3Ccircle%20cx%3D%27118%27%20cy%3D%2792%27%20r%3D%279%27%2F%3E%3Cpath%20d%3D%27M18%20104l10%2010M28%20104l-10%2010%27%2F%3E%3Cpath%20d%3D%27M84%20124q8-8%2016%200t16%200%27%2F%3E%3Cpath%20d%3D%27M44%20118h-8m4-4v8%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") repeat, #eef1f5;
+  --wp-sunset: linear-gradient(165deg, #ffe4d4 0%, #ffd3e2 50%, #e7ddff 100%);
+  --wp-ocean: linear-gradient(165deg, #dbf1ff 0%, #d6f4ec 100%);
+  --wp-night: linear-gradient(170deg, #1d2547 0%, #2c2f5a 60%, #3a2f5e 100%);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -41,6 +47,11 @@
     --danger: #ff453a;
     --ok: #30d158;
     --bar: rgba(22, 22, 24, 0.82);
+    --wp-soft: linear-gradient(180deg, #11151d 0%, #181219 100%);
+    --wp-doodle: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27140%27%20height%3D%27140%27%20viewBox%3D%270%200%20140%20140%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-opacity%3D%270.07%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M14%2022h22a6%206%200%200%201%206%206v8a6%206%200%200%201-6%206H26l-6%205v-5h-6a6%206%200%200%201-6-6v-8a6%206%200%200%201%206-6z%27%2F%3E%3Cpath%20d%3D%27M98%2018l3%206%206.5%201-4.7%204.6%201.1%206.4-5.9-3.1-5.9%203.1%201.1-6.4-4.7-4.6%206.5-1z%27%2F%3E%3Cpath%20d%3D%27M60%2070c0-6%208-9%2012-3%204-6%2012-3%2012%203%200%207-12%2013-12%2013s-12-6-12-13z%27%2F%3E%3Ccircle%20cx%3D%27118%27%20cy%3D%2792%27%20r%3D%279%27%2F%3E%3Cpath%20d%3D%27M18%20104l10%2010M28%20104l-10%2010%27%2F%3E%3Cpath%20d%3D%27M84%20124q8-8%2016%200t16%200%27%2F%3E%3Cpath%20d%3D%27M44%20118h-8m4-4v8%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") repeat, #0c0f14;
+    --wp-sunset: linear-gradient(165deg, #2a1622 0%, #1d1530 55%, #101425 100%);
+    --wp-ocean: linear-gradient(165deg, #071c28 0%, #0a231f 100%);
+    --wp-night: linear-gradient(170deg, #0b0f24 0%, #141836 60%, #1d1838 100%);
     color-scheme: dark;
   }
 }
@@ -62,6 +73,11 @@
   --danger: #ff453a;
   --ok: #30d158;
   --bar: rgba(22, 22, 24, 0.82);
+  --wp-soft: linear-gradient(180deg, #11151d 0%, #181219 100%);
+  --wp-doodle: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27140%27%20height%3D%27140%27%20viewBox%3D%270%200%20140%20140%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-opacity%3D%270.07%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M14%2022h22a6%206%200%200%201%206%206v8a6%206%200%200%201-6%206H26l-6%205v-5h-6a6%206%200%200%201-6-6v-8a6%206%200%200%201%206-6z%27%2F%3E%3Cpath%20d%3D%27M98%2018l3%206%206.5%201-4.7%204.6%201.1%206.4-5.9-3.1-5.9%203.1%201.1-6.4-4.7-4.6%206.5-1z%27%2F%3E%3Cpath%20d%3D%27M60%2070c0-6%208-9%2012-3%204-6%2012-3%2012%203%200%207-12%2013-12%2013s-12-6-12-13z%27%2F%3E%3Ccircle%20cx%3D%27118%27%20cy%3D%2792%27%20r%3D%279%27%2F%3E%3Cpath%20d%3D%27M18%20104l10%2010M28%20104l-10%2010%27%2F%3E%3Cpath%20d%3D%27M84%20124q8-8%2016%200t16%200%27%2F%3E%3Cpath%20d%3D%27M44%20118h-8m4-4v8%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") repeat, #0c0f14;
+  --wp-sunset: linear-gradient(165deg, #2a1622 0%, #1d1530 55%, #101425 100%);
+  --wp-ocean: linear-gradient(165deg, #071c28 0%, #0a231f 100%);
+  --wp-night: linear-gradient(170deg, #0b0f24 0%, #141836 60%, #1d1838 100%);
   color-scheme: dark;
 }
 
@@ -124,3 +140,13 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .skeleton, .ring-pulse::before { animation: none; }
 }
+
+/* Chat wallpapers */
+.wp-plain { background: var(--panel); }
+.wp-soft { background: var(--wp-soft); }
+.wp-doodle { background: var(--wp-doodle); }
+.wp-sunset { background: var(--wp-sunset); }
+.wp-ocean { background: var(--wp-ocean); }
+.wp-night { background: var(--wp-night); }
+/* Incoming bubbles and small text on the dark "Night" wallpaper stay readable in light mode too. */
+.wp-night { --bubble-them: #2c2c3a; --bubble-them-ink: #ffffff; --muted: #a9adbd; --panel-2: #2a2d45; }

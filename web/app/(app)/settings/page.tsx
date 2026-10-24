@@ -2,13 +2,14 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Camera, ChevronRight, LogOut, Monitor, Moon, Smartphone, Sun } from 'lucide-react';
+import { Camera, ChevronRight, Eraser, LogOut, Monitor, Moon, Smartphone, Sun } from 'lucide-react';
 import { api, errorText, uploadFile } from '@/lib/api';
 import { currentPush, disablePush, enablePush, pushSupported } from '@/lib/push';
 import { backgroundEnabled, setBackground, subscribeBackground } from '@/lib/background';
 import { useSession } from '@/lib/session';
 import { closeSocket } from '@/lib/socket';
-import { resetStore } from '@/lib/store';
+import { clearAllThreads, resetStore } from '@/lib/store';
+import { ChatThemePicker } from '@/components/chat/ChatThemePicker';
 import { cx, timeShort } from '@/lib/format';
 import type { Me } from '@/lib/types';
 import { Avatar, Button, Card, Input, Modal, Switch, useConfirm, useToast } from '@/components/ui';
@@ -146,6 +147,30 @@ export default function SettingsPage() {
                 <Icon className="size-4" /> {label}
               </button>
             ))}
+          </div>
+        </Card>
+
+        <Card title="Chat theme">
+          <ChatThemePicker />
+          <p className="pb-2 text-xs text-muted">For all chats on this phone. A chat can have its own theme: open it → ⋮ → Chat theme.</p>
+        </Card>
+
+        <Card title="Chats">
+          <div className="py-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-danger"
+              onClick={async () => {
+                if (!(await confirm({ title: 'Clear all chats?', text: 'Every message in every chat disappears for you. Other people keep theirs. Chats stay in your list.', confirm: 'Clear all', danger: true }))) return;
+                await run(async () => {
+                  await api.post('/conversations/clear-all');
+                  clearAllThreads();
+                }, 'All chats cleared');
+              }}
+            >
+              <Eraser className="size-4" /> Clear all chats
+            </Button>
           </div>
         </Card>
 

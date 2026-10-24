@@ -73,6 +73,7 @@ curl -b jar http://localhost:8080/api/conversations
 | PATCH | `/:id/members/:userId` | `{role: ADMIN|MEMBER|OWNER}` (OWNER hands over ownership). |
 | PATCH | `/:id/me` | `{pinned?, archived?, mutedForSeconds?}` — only for you. |
 | POST | `/:id/clear` | Hide earlier messages for you. |
+| POST | `/clear-all` | Clear every chat for you only (others keep their messages). |
 | DELETE | `/:id` | Delete a group (owner). |
 | POST | `/:id/invites` | `{maxUses?, expiresInHours?}` → `{code}` (admins). |
 | DELETE | `/:id/invites/:code` | Revoke. |

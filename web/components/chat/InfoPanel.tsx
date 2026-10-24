@@ -6,7 +6,7 @@ import { Archive, Bell, BellOff, Camera, Copy, Flag, Link2, LogOut, Pin, ShieldB
 import { api, errorText, uploadFile } from '@/lib/api';
 import { cx } from '@/lib/format';
 import { useMe } from '@/lib/session';
-import { putConversations, removeConversation } from '@/lib/store';
+import { clearThread, putConversations, removeConversation } from '@/lib/store';
 import type { ConversationSummary, PublicUser } from '@/lib/types';
 import { Avatar, Button, IconButton, Input, Modal, Select, useConfirm, useToast } from '../ui';
 
@@ -80,8 +80,11 @@ export function InfoPanel({ conv, onClose, onReportUser }: { conv: Conv; onClose
           icon={Trash2}
           label="Clear chat for me"
           onClick={async () => {
-            if (await confirm({ title: 'Clear this chat?', text: 'Messages disappear for you only.', confirm: 'Clear', danger: true })) await run(() => api.post(`/conversations/${conv.id}/clear`), 'Chat cleared');
-            location.reload();
+            if (!(await confirm({ title: 'Clear this chat?', text: 'Messages disappear for you only.', confirm: 'Clear', danger: true }))) return;
+            await run(async () => {
+              await api.post(`/conversations/${conv.id}/clear`);
+              clearThread(conv.id);
+            }, 'Chat cleared');
           }}
         />
       </div>
