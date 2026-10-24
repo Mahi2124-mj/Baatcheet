@@ -240,7 +240,18 @@ export function Composer({ conversationId, disabled, replyTo, replyName, editing
           />
         )}
         {text.trim() || ready.length || editing ? (
-          <IconButton label={editing ? 'Save' : 'Send'} onClick={submit} disabled={busy} className="bg-accent text-accent-ink hover:bg-accent hover:text-accent-ink">
+          <IconButton
+            label={editing ? 'Save' : 'Send'}
+            // Keep the focus (and the phone keyboard) in the text box.
+            onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              submit();
+              area.current?.focus();
+            }}
+            disabled={busy}
+            className="bg-accent text-accent-ink hover:bg-accent hover:text-accent-ink"
+          >
             <Send className="size-5" />
           </IconButton>
         ) : (

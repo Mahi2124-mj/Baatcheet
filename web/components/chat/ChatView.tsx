@@ -10,6 +10,7 @@ import { useMe } from '@/lib/session';
 import { emitAck, getSocket } from '@/lib/socket';
 import { addPending, clearThread, failPending, getState, hideMessage, patchConversation, upsertMessages, useStore } from '@/lib/store';
 import { bubbleColor, useChatTheme } from '@/lib/chatTheme';
+import { messageAlert } from '@/lib/sounds';
 import type { Message } from '@/lib/types';
 import { Avatar, Empty, ErrorBox, IconButton, Modal, Skeleton, Spinner, useConfirm, useToast } from '../ui';
 import { ChatThemePicker } from './ChatThemePicker';
@@ -117,6 +118,27 @@ export function ChatView({ id }: { id: string }) {
       el.scrollTop = el.scrollHeight;
     }
   }, [messages, pending, atBottom]);
+
+  // New message in the open chat, like WhatsApp / Telegram: a soft pop, and when you've scrolled up a
+  // "N new messages" button instead of jumping.
+  const [newCount, setNewCount] = useState(0);
+  const lastId = useRef<string | null>(null);
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    const prev = lastId.current;
+    lastId.current = last?.id ?? null;
+    if (!last || !prev || prev === last.id) return;
+    const idx = messages.findIndex((m) => m.id === prev);
+    if (idx === -1) return; // cleared or reloaded, not new arrivals
+    const fresh = messages.slice(idx + 1).filter((m) => m.senderId && m.senderId !== me.id && m.kind !== 'SYSTEM');
+    if (!fresh.length) return;
+    if (!conv?.muted && document.visibilityState === 'visible' && !['connecting', 'connected', 'reconnecting', 'outgoing'].includes(calls.getState().phase)) messageAlert('chat');
+    if (!atBottom) setNewCount((n) => n + fresh.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+  useEffect(() => {
+    if (atBottom) setNewCount(0);
+  }, [atBottom]);
 
   // Read receipts for the newest message from someone else, while the tab is visible.
   const lastOther = useMemo(() => [...messages].reverse().find((m) => m.senderId && m.senderId !== me.id), [messages, me.id]);
@@ -447,12 +469,15 @@ export function ChatView({ id }: { id: string }) {
         </div>
         {!atBottom && (
           <button
-            aria-label="Scroll to newest"
+            aria-label={newCount ? `${newCount} new ${newCount === 1 ? 'message' : 'messages'}, scroll to newest` : 'Scroll to newest'}
             onClick={() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })}
-            className="absolute bottom-24 right-6 flex size-10 items-center justify-center rounded-full border border-line bg-panel shadow-lg"
+            className={cx(
+              'absolute bottom-24 right-4 z-10 flex h-10 items-center justify-center gap-1.5 rounded-full border border-line bg-panel shadow-lg',
+              newCount ? 'px-3.5 text-sm font-semibold text-accent' : 'w-10',
+            )}
           >
+            {newCount > 0 && <span>{newCount > 99 ? '99+' : newCount} new</span>}
             <ArrowDown className="size-5" />
-            {Boolean(conv?.unread) && <span className="absolute -top-1 -right-1 size-3 rounded-full bg-accent" />}
           </button>
         )}
         <Composer

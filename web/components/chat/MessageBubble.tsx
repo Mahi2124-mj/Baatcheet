@@ -72,6 +72,50 @@ function useLongPress(open: () => void) {
   };
 }
 
+/** Swipe a message to the right to reply (touch screens), like WhatsApp. Vertical scrolling is untouched. */
+function useSwipeReply(onReply: () => void, enabled: boolean) {
+  const [dx, setDx] = useState(0);
+  const start = useRef<{ x: number; y: number; dir?: 'h' | 'v' } | null>(null);
+  const last = useRef(0);
+  const TRIGGER = 56;
+  const move = (v: number) => {
+    // Buzz once when the swipe passes the point where letting go replies.
+    if (last.current < TRIGGER && v >= TRIGGER) navigator.vibrate?.(10);
+    last.current = v;
+    setDx(v);
+  };
+  return {
+    dx,
+    handlers: {
+      onTouchStart: (e: React.TouchEvent) => {
+        if (!enabled || e.touches.length !== 1) return;
+        start.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      },
+      onTouchMove: (e: React.TouchEvent) => {
+        const s = start.current;
+        if (!s) return;
+        const ddx = e.touches[0].clientX - s.x;
+        const ddy = e.touches[0].clientY - s.y;
+        if (!s.dir) {
+          if (Math.abs(ddx) < 8 && Math.abs(ddy) < 8) return;
+          s.dir = Math.abs(ddx) > Math.abs(ddy) * 1.2 && ddx > 0 ? 'h' : 'v';
+        }
+        if (s.dir === 'h') move(Math.min(84, Math.max(0, ddx * 0.6)));
+      },
+      onTouchEnd: () => {
+        const s = start.current;
+        start.current = null;
+        if (s?.dir === 'h' && last.current >= TRIGGER) onReply();
+        move(0);
+      },
+      onTouchCancel: () => {
+        start.current = null;
+        move(0);
+      },
+    },
+  };
+}
+
 interface Props {
   m: Message & { failed?: boolean };
   mine: boolean;
@@ -96,6 +140,7 @@ interface Props {
 function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, myId, canDelete, highlight, onReply, onEdit, onDelete, onHide, onReact, onReport, onRetry, onJump }: Props) {
   const [menu, setMenu] = useState(false);
   const press = useLongPress(() => setMenu(true));
+  const swipe = useSwipeReply(() => onReply(m), m.kind !== 'SYSTEM' && m.kind !== 'CALL' && !m.deletedAt && !(tick === 'pending' || tick === 'failed'));
   const deleted = Boolean(m.deletedAt);
   const myReaction = m.reactions.find((r) => r.userIds.includes(myId))?.emoji ?? null;
 
@@ -138,8 +183,16 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
 
   const pending = tick === 'pending' || tick === 'failed';
   return (
-    <div id={`m-${m.id}`} className={cx('group flex px-3 py-0.5 sm:px-6', mine ? 'justify-end' : 'justify-start')}>
-      <div className={cx('relative max-w-[85%] sm:max-w-[70%]', highlight && 'animate-pulse')}>
+    <div id={`m-${m.id}`} className={cx('group relative flex px-3 py-0.5 sm:px-6', mine ? 'justify-end' : 'justify-start')} style={{ touchAction: 'pan-y' }} {...swipe.handlers}>
+      {swipe.dx > 0 && (
+        <span className="absolute left-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-panel-2 text-muted" style={{ opacity: Math.min(1, swipe.dx / 56) }} aria-hidden>
+          <Reply className="size-4" />
+        </span>
+      )}
+      <div
+        className={cx('relative max-w-[85%] sm:max-w-[70%]', highlight && 'animate-pulse')}
+        style={{ transform: swipe.dx ? `translateX(${swipe.dx}px)` : undefined, transition: swipe.dx ? 'none' : 'transform 0.2s ease-out' }}
+      >
         <div
           className={cx('rounded-[20px] px-3.5 py-2 text-[17px] leading-snug', mine ? 'rounded-br-[6px] bg-bubble-me text-bubble-me-ink' : 'rounded-bl-[6px] bg-bubble-them text-bubble-them-ink', deleted && 'italic opacity-70')}
           {...(pending ? {} : press)}

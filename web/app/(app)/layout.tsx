@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { backgroundEnabled, watchBackground } from '@/lib/background';
 import { localNotify, resumePush } from '@/lib/push';
+import { messageAlert, unlockAudio } from '@/lib/sounds';
 import { calls } from '@/lib/calls';
 import { bindRealtime, loadConversations, setNotificationHandlers } from '@/lib/realtime';
 import { SessionCtx } from '@/lib/session';
@@ -72,12 +73,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         // App in the background (screen off, other app): a phone notification instead of an in-app toast.
         if (inCall()) return;
         if (document.visibilityState !== 'visible') return void localNotify({ title, body: body.slice(0, 120), link: `/chats/${conversationId}`, tag: `conv-${conversationId}` });
+        messageAlert('other');
         toast(`${title}: ${body.slice(0, 80)}`, 'info', { label: 'Open', run: () => router.push(`/chats/${conversationId}`) });
       },
     );
     void loadConversations().catch(() => {});
     api.get<{ unread: number }>('/notifications').then((r) => setState(() => ({ unreadNotifications: r.unread })), () => {});
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // Message sounds can only play after the first tap.
+    document.addEventListener('pointerdown', unlockAudio, { once: true });
     // Calls and messages also reach this device when no Baatcheet tab is open (unless
     // "Run in background" is off here).
     if (backgroundEnabled()) void resumePush().catch(() => {});
