@@ -109,7 +109,8 @@ html, body {
   height: 100%;
 }
 body {
-  font-family: var(--font-sans);
+  /* Written out: with @theme inline, --font-sans is not a real CSS variable, and var() fell back to serif. */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", system-ui, Roboto, "Noto Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.01em;
   -webkit-tap-highlight-color: transparent;
@@ -150,3 +151,5 @@ body {
 .wp-night { background: var(--wp-night); }
 /* Incoming bubbles and small text on the dark "Night" wallpaper stay readable in light mode too. */
 .wp-night { --bubble-them: #2c2c3a; --bubble-them-ink: #ffffff; --muted: #a9adbd; --panel-2: #2a2d45; }
+
+button, input, textarea, select { font: inherit; }

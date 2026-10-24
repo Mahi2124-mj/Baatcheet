@@ -291,14 +291,16 @@ export function ChatView({ id }: { id: string }) {
   return (
     <div className="flex h-full">
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
-        <header className="safe-t flex items-center gap-2 ios-bar border-b border-line/60 px-2 py-2 sm:px-4">
+        <header className="safe-t relative z-20 flex items-center gap-1 ios-bar border-b border-line/60 px-1 py-2 sm:gap-2 sm:px-4">
           <IconButton label="Back to chats" className="md:hidden" onClick={() => router.push('/chats')}>
             <ArrowLeft className="size-5" />
           </IconButton>
           {conv ? (
-            <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setInfo(true)} aria-label="Chat info">
-              <Avatar name={conv.name} url={conv.avatarUrl} size={40} online={pres?.online} />
-              <span className="min-w-0">
+            <button className="flex min-w-0 flex-1 items-center gap-2.5 text-left" onClick={() => setInfo(true)} aria-label="Chat info">
+              <span className="shrink-0">
+                <Avatar name={conv.name} url={conv.avatarUrl} size={38} online={pres?.online} />
+              </span>
+              <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{conv.name}</span>
                 <span className={cx('block truncate text-xs', typers.length ? 'text-accent' : 'text-muted')}>{connected ? status : 'Connecting…'}</span>
               </span>
@@ -319,12 +321,6 @@ export function ChatView({ id }: { id: string }) {
               </IconButton>
             </>
           )}
-          <IconButton label="Search in chat" onClick={() => setSearchOpen((v) => !v)} active={searchOpen} className="hidden sm:inline-flex">
-            <Search className="size-5" />
-          </IconButton>
-          <IconButton label="Chat info" onClick={() => setInfo((v) => !v)} active={info} className="hidden lg:inline-flex">
-            <Info className="size-5" />
-          </IconButton>
           {conv && (
             <div className="relative">
               <IconButton label="More" onClick={() => setMoreOpen((v) => !v)} active={moreOpen}>
