@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Bluetooth, Check, Ear, Headphones, Maximize, MicOff, Mic, Minimize2, Phone, PhoneOff, PictureInPicture2, SwitchCamera, Video, VideoOff, Volume2 } from 'lucide-react';
+import { Bluetooth, Check, Ear, Headphones, Lock, Maximize, MicOff, Mic, Minimize2, Moon, Phone, PhoneOff, PictureInPicture2, SwitchCamera, Video, VideoOff, Volume2 } from 'lucide-react';
 import type { AudioRoute } from '@/lib/audioRoute';
 import { calls, type CallState, type GroupTile } from '@/lib/calls';
 import { cx, duration } from '@/lib/format';
@@ -144,16 +144,60 @@ function AudioRouteButton({ s }: { s: CallState }) {
   );
 }
 
+/**
+ * Touch lock for holding the phone to the ear: a black screen that ignores every touch. Holding the lock
+ * for a second unlocks it (a cheek can't do that by accident).
+ */
+function TouchLock({ onUnlock }: { onUnlock: () => void }) {
+  const t = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [holding, setHolding] = useState(false);
+  const stop = () => {
+    if (t.current) clearTimeout(t.current);
+    t.current = null;
+    setHolding(false);
+  };
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex touch-none select-none flex-col items-center justify-end bg-black pb-24"
+      onContextMenu={(e) => e.preventDefault()}
+      role="dialog"
+      aria-label="Screen locked"
+    >
+      <button
+        aria-label="Hold to unlock the screen"
+        className={cx('flex size-20 items-center justify-center rounded-full border border-white/20 text-white/70 transition', holding && 'scale-110 border-white/60 text-white')}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          setHolding(true);
+          t.current = setTimeout(() => {
+            stop();
+            navigator.vibrate?.(20);
+            onUnlock();
+          }, 1000);
+        }}
+        onPointerUp={stop}
+        onPointerCancel={stop}
+        onLostPointerCapture={stop}
+      >
+        <Lock className="size-8" />
+      </button>
+      <p className="mt-4 text-sm text-white/50">Hold to unlock</p>
+    </div>
+  );
+}
+
 export function CallLayer() {
   const s = useCall();
   const toast = useToast();
   const secs = useTimer(s.connectedAt);
   const [mini, setMini] = useState(false);
+  const [touchLocked, setTouchLocked] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const remoteVideo = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (s.phase === 'idle') setMini(false);
+    if (s.phase === 'idle' || s.phase === 'ended' || s.phase === 'incoming') setTouchLocked(false);
   }, [s.phase]);
 
   // Keep the screen title useful while in a call.
@@ -221,8 +265,20 @@ export function CallLayer() {
             {status}
             {s.audioOnlyFallback && video ? ' · your camera is off (no access)' : ''}
           </p>
+          <button
+            onClick={() => calls.toggleDnd()}
+            aria-pressed={s.dnd}
+            className={cx('mt-1.5 flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px]', s.dnd ? 'bg-white/15 text-white' : 'text-white/50 ring-1 ring-white/20')}
+          >
+            <Moon className="size-3" /> {s.dnd ? 'Do not disturb' : 'Notifications on'}
+          </button>
         </div>
         <div className="flex gap-1">
+          {s.phase !== 'ended' && (
+            <button aria-label="Lock screen (for holding the phone to your ear)" className="rounded-full p-2 hover:bg-white/10" onClick={() => setTouchLocked(true)}>
+              <Lock className="size-5" />
+            </button>
+          )}
           {video && !s.group && remoteHasVideo && typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && (
             <button aria-label="Picture in picture" className="rounded-full p-2 hover:bg-white/10" onClick={() => void remoteVideo.current?.requestPictureInPicture?.().catch(() => {})}>
               <PictureInPicture2 className="size-5" />
@@ -289,6 +345,7 @@ export function CallLayer() {
         {s.error && s.phase === 'ended' && <p className="absolute inset-x-0 bottom-6 text-center text-sm text-red-300">{s.error}</p>}
       </div>
 
+      {touchLocked && <TouchLock onUnlock={() => setTouchLocked(false)} />}
       <div className="safe-b flex items-center justify-center gap-3 px-4 py-6 sm:gap-4">
         <Ctrl label={s.micOn ? 'Mute microphone' : 'Unmute microphone'} off={!s.micOn} onClick={() => calls.toggleMic()}>
           {s.micOn ? <Mic className="size-6" /> : <MicOff className="size-6" />}

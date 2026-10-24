@@ -15,7 +15,16 @@ export function getSocket(): AppSocket {
     transports: ['websocket', 'polling'],
     reconnectionDelay: 500,
     reconnectionDelayMax: 8000,
+    // Read again on every (re)connect: online = the app is on screen.
+    auth: (cb) => cb({ visible: document.visibilityState === 'visible' }),
   });
+  // Screen off / app switched: others see "last seen", and pushes start arriving.
+  const s = socket;
+  const report = () => {
+    if (s.connected) s.emit('presence:visible', { visible: document.visibilityState === 'visible' });
+  };
+  document.addEventListener('visibilitychange', report);
+  window.addEventListener('pagehide', () => s.connected && s.emit('presence:visible', { visible: false }));
   return socket;
 }
 

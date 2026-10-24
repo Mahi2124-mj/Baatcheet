@@ -7,6 +7,7 @@
 import type { CallType, IceConfig, PublicUser, SignalData } from '@baatcheet/shared';
 import type { Room } from 'livekit-client';
 import { api } from './api';
+import { closeNotification, localNotify } from './push';
 import { defaultRoute, listRoutes, type AudioRoute, type RouteOption } from './audioRoute';
 import { emitAck, getSocket } from './socket';
 
@@ -56,6 +57,8 @@ export interface CallState {
   audioRoutes: RouteOption[];
   /** Output device for audio / video elements (setSinkId), when the route is chosen that way. */
   sinkId: string | null;
+  /** Do not disturb during the call: no message toasts / notifications over it (on by default). */
+  dnd: boolean;
 }
 
 const initial: CallState = {
@@ -82,6 +85,7 @@ const initial: CallState = {
   audioRoute: null,
   audioRoutes: [],
   sinkId: null,
+  dnd: true,
 };
 
 /** Human message for getUserMedia failures. */
@@ -183,7 +187,14 @@ export class CallController {
         camOn: c.type === 'VIDEO',
       });
       this.tone.play('ring');
-      this.notifyIncoming(c.from.displayName, c.type, c.group ? c.groupName : null);
+      void localNotify({
+        title: `Incoming ${c.type === 'VIDEO' ? 'video' : 'voice'} call`,
+        body: c.group ? `${c.from.displayName} · ${c.groupName ?? 'Group'}` : `${c.from.displayName} is calling you`,
+        link: `/chats/${c.conversationId}?call=${c.callId}`,
+        tag: `call-${c.callId}`,
+        call: true,
+        callId: c.callId,
+      });
     });
     s.on('call:accepted', ({ callId, userId }) => {
       if (callId !== this.state.callId) return;
@@ -242,19 +253,6 @@ export class CallController {
         () => this.finish('Connection lost', false),
       );
     });
-  }
-
-  private notifyIncoming(name: string, type: CallType, group: string | null) {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
-    try {
-      const n = new Notification(`Incoming ${type === 'VIDEO' ? 'video' : 'voice'} call`, { body: group ? `${name} · ${group}` : name, tag: 'call', requireInteraction: true });
-      n.onclick = () => {
-        window.focus();
-        n.close();
-      };
-    } catch {
-      // Some browsers only allow notifications from a service worker.
-    }
   }
 
   private async getMedia(type: CallType): Promise<{ stream: MediaStream; fallback: boolean }> {
@@ -321,6 +319,7 @@ export class CallController {
     const { callId, type, phase } = this.state;
     if (!callId || phase !== 'incoming') return;
     this.tone.stop();
+    void closeNotification(`call-${callId}`);
     let media: { stream: MediaStream; fallback: boolean };
     try {
       media = await this.getMedia(type);
@@ -360,6 +359,10 @@ export class CallController {
     const { callId } = this.state;
     if (callId) getSocket().emit('call:end', { callId });
     this.finish('Call ended', false);
+  }
+
+  toggleDnd() {
+    this.set({ dnd: !this.state.dnd });
   }
 
   toggleMic() {
@@ -453,29 +456,94 @@ export class CallController {
   /** Picks the starting route (headset if connected, else earpiece for voice, speaker for video). */
   private async setupAudioRoute() {
     navigator.mediaDevices?.addEventListener?.('devicechange', this.onDeviceChange);
+    document.addEventListener('visibilitychange', this.onVisibility);
+    this.watchMic();
+    void this.keepAwake();
     const options = await listRoutes();
     this.set({ audioRoutes: options });
     const first = defaultRoute(options, this.state.type === 'VIDEO');
     if (first) await this.setAudioRoute(first.route);
   }
 
-  /** Bluetooth / headphones plugged in or removed during the call. */
+  private deviceTimer: ReturnType<typeof setTimeout> | null = null;
+  private recheckWhenVisible = false;
+
+  /** Bluetooth / headphones plugged in or removed during the call (several events come at once: wait a bit). */
   private onDeviceChange = () => {
     if (this.state.phase === 'idle' || this.state.phase === 'ended') return;
-    void (async () => {
-      const before = this.state.audioRoutes;
-      const options = await listRoutes();
-      this.set({ audioRoutes: options });
-      const added = options.find((o) => (o.route === 'bluetooth' || o.route === 'wired') && !before.some((b) => b.route === o.route));
-      const currentGone = this.state.audioRoute && !options.some((o) => o.route === this.state.audioRoute);
-      if (added) await this.setAudioRoute(added.route);
-      else if (currentGone) {
-        const next = defaultRoute(options, this.state.type === 'VIDEO');
-        if (next) await this.setAudioRoute(next.route);
-        else this.set({ audioRoute: null, sinkId: null });
-      }
-    })();
+    clearTimeout(this.deviceTimer ?? undefined);
+    this.deviceTimer = setTimeout(() => void this.recheckRoutes(), 800);
   };
+
+  private async recheckRoutes() {
+    if (this.state.phase === 'idle' || this.state.phase === 'ended') return;
+    // Screen off / app in the background: browsers refuse to open a microphone then, and switching would
+    // leave the call silent. Re-check when the app is visible again.
+    if (document.visibilityState === 'hidden') {
+      this.recheckWhenVisible = true;
+      return;
+    }
+    const before = this.state.audioRoutes;
+    const options = await listRoutes();
+    // The same list again (Android fires this when the screen turns off/on): nothing to do.
+    if (options.length && options.map((o) => o.route).join() === before.map((o) => o.route).join()) {
+      this.set({ audioRoutes: options });
+      return;
+    }
+    // An empty list while the call runs is a glitch, not "every device was unplugged".
+    if (!options.length) return;
+    this.set({ audioRoutes: options });
+    const added = options.find((o) => (o.route === 'bluetooth' || o.route === 'wired') && !before.some((b) => b.route === o.route));
+    const currentGone = this.state.audioRoute && !options.some((o) => o.route === this.state.audioRoute);
+    if (added) await this.setAudioRoute(added.route);
+    else if (currentGone) {
+      const next = defaultRoute(options, this.state.type === 'VIDEO');
+      if (next) await this.setAudioRoute(next.route);
+      else this.set({ audioRoute: null, sinkId: null });
+    }
+  }
+
+  private onVisibility = () => {
+    if (this.state.phase === 'idle' || this.state.phase === 'ended' || document.visibilityState !== 'visible') return;
+    void this.keepAwake();
+    void this.ensureMic();
+    if (this.recheckWhenVisible) {
+      this.recheckWhenVisible = false;
+      void this.recheckRoutes();
+    }
+  };
+
+  /** If the phone took the microphone away (screen locked, another app), get it back as soon as possible. */
+  private watchMic() {
+    const track = this.state.local?.getAudioTracks()[0];
+    if (!track || (track as MediaStreamTrack & { _watched?: boolean })._watched) return;
+    (track as MediaStreamTrack & { _watched?: boolean })._watched = true;
+    track.addEventListener('ended', () => void this.ensureMic());
+  }
+
+  private async ensureMic() {
+    if (this.room || this.state.phase === 'idle' || this.state.phase === 'ended') return;
+    const current = this.state.local?.getAudioTracks()[0];
+    if (current && current.readyState === 'live') return;
+    const option = this.state.audioRoutes.find((o) => o.route === this.state.audioRoute);
+    try {
+      await this.replaceMic(option?.inputId ? { exact: option.inputId } : undefined);
+    } catch {
+      // Still hidden: onVisibility tries again.
+    }
+  }
+
+  /** Keeps the screen from turning off by itself during a call (released when the call ends or the tab hides). */
+  private wakeLock: { release: () => Promise<void> } | null = null;
+  private async keepAwake() {
+    const wl = (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock;
+    if (!wl || document.visibilityState !== 'visible') return;
+    try {
+      this.wakeLock = await wl.request('screen');
+    } catch {
+      // Battery saver or no permission: the screen may dim as usual.
+    }
+  }
 
   /** Speaker button: speaker ⇄ earpiece (or back to the headset when one is connected). */
   async toggleSpeaker() {
@@ -510,28 +578,49 @@ export class CallController {
       await this.room.switchActiveDevice('audioinput', deviceId);
       return;
     }
+    const current = this.state.local?.getAudioTracks()[0];
+    if (!current || (current.readyState === 'live' && current.getSettings().deviceId === deviceId)) return;
+    await this.replaceMic({ exact: deviceId });
+  }
+
+  /**
+   * Opens a microphone and swaps it into the call. Never leaves the call without a microphone: if the new
+   * one can't be opened, the previous one stays (or is reopened).
+   */
+  private async replaceMic(deviceId?: { exact: string }) {
     const local = this.state.local;
-    const current = local?.getAudioTracks()[0];
-    if (!local || !current || current.getSettings().deviceId === deviceId) return;
-    const constraints = { audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+    if (!local) return;
+    const current = local.getAudioTracks()[0];
+    const audio = (id?: { exact: string }) => ({ audio: { ...(id ? { deviceId: id } : {}), echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const open = async (id?: { exact: string }) => (await navigator.mediaDevices.getUserMedia(audio(id))).getAudioTracks()[0];
     let track: MediaStreamTrack;
     try {
-      track = (await navigator.mediaDevices.getUserMedia(constraints)).getAudioTracks()[0];
-    } catch {
-      // Some phones can open only one microphone at a time: release the current one and retry.
+      track = await open(deviceId);
+    } catch (e) {
+      const name = (e as { name?: string }).name;
+      // Some phones open only one microphone at a time: release ours and retry — but only for that error.
+      if ((name !== 'NotReadableError' && name !== 'AbortError') || !current || current.readyState !== 'live') throw e;
+      const previous = current.getSettings().deviceId;
       current.stop();
-      track = (await navigator.mediaDevices.getUserMedia(constraints)).getAudioTracks()[0];
+      try {
+        track = await open(deviceId);
+      } catch {
+        track = await open(previous ? { exact: previous } : undefined);
+      }
     }
     if (this.state.local !== local || this.state.phase === 'idle' || this.state.phase === 'ended') {
       track.stop();
       return;
     }
     track.enabled = this.state.micOn;
-    await this.pc?.getSenders().find((x) => x.track?.kind === 'audio' || x.track === current)?.replaceTrack(track);
-    local.removeTrack(current);
-    current.stop();
+    await this.pc?.getTransceivers().find((t) => t.receiver.track.kind === 'audio')?.sender.replaceTrack(track);
+    if (current) {
+      local.removeTrack(current);
+      current.stop();
+    }
     local.addTrack(track);
     this.set({ local: new MediaStream(local.getTracks()) });
+    this.watchMic();
   }
 
   // ----- 1:1 WebRTC -----
@@ -579,7 +668,7 @@ export class CallController {
       clearTimeout(this.restartTimer ?? undefined);
       this.restartTimer = setTimeout(() => {
         if (this.state.outgoing) void this.makeOffer(true);
-      }, st === 'failed' ? 0 : 2500);
+      }, st === 'failed' ? 0 : 4000);
       if (!this.failTimer) this.failTimer = setTimeout(() => {
         if (this.pc?.connectionState !== 'connected') {
           this.hangUp();
@@ -711,7 +800,13 @@ export class CallController {
 
   private finish(reason: string, keepError: boolean, error: string | null = null) {
     this.tone.stop();
+    if (this.state.callId) void closeNotification(`call-${this.state.callId}`);
     navigator.mediaDevices?.removeEventListener?.('devicechange', this.onDeviceChange);
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    clearTimeout(this.deviceTimer ?? undefined);
+    this.recheckWhenVisible = false;
+    void this.wakeLock?.release().catch(() => {});
+    this.wakeLock = null;
     clearTimeout(this.restartTimer ?? undefined);
     clearTimeout(this.failTimer ?? undefined);
     this.failTimer = null;

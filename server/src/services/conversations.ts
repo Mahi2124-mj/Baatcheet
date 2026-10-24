@@ -27,7 +27,7 @@ export async function summaries(userId: string, conversationIds?: string[]): Pro
       const window = historyWindow(mem, group);
       const [last, unread] = await Promise.all([
         prisma.message.findFirst({
-          where: { conversationId: c.id, createdAt: window },
+          where: { conversationId: c.id, createdAt: window, hiddenBy: { none: { userId } } },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           include: messageInclude,
         }),
@@ -36,6 +36,7 @@ export async function summaries(userId: string, conversationIds?: string[]): Pro
             conversationId: c.id,
             deletedAt: null,
             senderId: { not: userId },
+            hiddenBy: { none: { userId } },
             createdAt: { ...window, ...(mem.lastReadAt && (!window.gt || mem.lastReadAt > window.gt) ? { gt: mem.lastReadAt } : {}) },
           },
         }),

@@ -3,7 +3,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { backgroundEnabled, watchBackground } from '@/lib/background';
-import { resumePush } from '@/lib/push';
+import { localNotify, resumePush } from '@/lib/push';
+import { calls } from '@/lib/calls';
 import { bindRealtime, loadConversations, setNotificationHandlers } from '@/lib/realtime';
 import { SessionCtx } from '@/lib/session';
 import { closeSocket, getSocket } from '@/lib/socket';
@@ -15,6 +16,12 @@ import { CallLayer } from '@/components/call/CallLayer';
 import { Logo } from '@/components/Logo';
 import { PinLock } from '@/components/PinLock';
 import { isUnlocked } from '@/lib/quickLogin';
+
+/** In a call with "do not disturb" on: no message / notification toasts or phone notifications over it. */
+const inCall = () => {
+  const s = calls.getState();
+  return s.dnd && !['idle', 'ended'].includes(s.phase);
+};
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -56,8 +63,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     getSocket();
     bindRealtime(me.id);
     setNotificationHandlers(
-      (n) => toast(`${n.title}: ${n.body}`, 'info', n.link ? { label: 'Open', run: () => router.push(n.link!) } : undefined),
-      (conversationId, title, body) => toast(`${title}: ${body.slice(0, 80)}`, 'info', { label: 'Open', run: () => router.push(`/chats/${conversationId}`) }),
+      (n) => {
+        if (inCall()) return;
+        if (document.visibilityState !== 'visible') return void localNotify({ title: n.title, body: n.body, link: n.link ?? '/notifications', tag: n.type });
+        toast(`${n.title}: ${n.body}`, 'info', n.link ? { label: 'Open', run: () => router.push(n.link!) } : undefined);
+      },
+      (conversationId, title, body) => {
+        // App in the background (screen off, other app): a phone notification instead of an in-app toast.
+        if (inCall()) return;
+        if (document.visibilityState !== 'visible') return void localNotify({ title, body: body.slice(0, 120), link: `/chats/${conversationId}`, tag: `conv-${conversationId}` });
+        toast(`${title}: ${body.slice(0, 80)}`, 'info', { label: 'Open', run: () => router.push(`/chats/${conversationId}`) });
+      },
     );
     void loadConversations().catch(() => {});
     api.get<{ unread: number }>('/notifications').then((r) => setState(() => ({ unreadNotifications: r.unread })), () => {});

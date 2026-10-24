@@ -10,7 +10,7 @@ import { logger } from '../logger.js';
 import { livekitEnabled } from '../services/livekit.js';
 import { assertCanPost, systemMessage } from '../services/messages.js';
 import { notify } from '../services/notify.js';
-import { isOnline } from '../services/presence.js';
+import { isConnected, isOnline } from '../services/presence.js';
 import { sendPush } from '../lib/push.js';
 import { publicUser, withProfile } from '../services/users.js';
 import { io, toUser } from './hub.js';
@@ -36,6 +36,8 @@ interface LiveCall {
   ringTimer?: NodeJS.Timeout;
   answered: boolean;
   startedAt: number;
+  /** What callees were sent, so a tab that connects while the call rings (opened from the notification) rings too. */
+  incoming?: Parameters<ServerToClient['call:incoming']>[0];
 }
 
 const calls = new Map<string, LiveCall>();
@@ -127,6 +129,9 @@ export async function startCall(userId: string, socketId: string, conversationId
   };
 
   const from = await publicUser(await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: withProfile }), null);
+  live.incoming = { callId: call.id, conversationId, type, from: { ...from, online: true }, group, groupName: group ? conv.name : null };
+  // Registered before anyone is rung, so a quick "accept" finds the call.
+  calls.set(call.id, live);
   let reachable = false;
   for (const id of calleeIds) {
     const other = busy(id);
@@ -138,14 +143,15 @@ export async function startCall(userId: string, socketId: string, conversationId
     }
     if (other) continue;
     live.parties.set(id, { userId: id, socketId: null, state: 'ringing' });
-    if (isOnline(id)) reachable = true;
-    toUser(id, 'call:incoming', { callId: call.id, conversationId, type, from: { ...from, online: true }, group, groupName: group ? conv.name : null });
+    // A connected tab rings even in the background; the push covers a closed or hidden app too.
+    if (isConnected(id)) reachable = true;
+    toUser(id, 'call:incoming', live.incoming);
     const prefs = await prisma.userProfile.findUnique({ where: { userId: id }, select: { notifyCalls: true } });
+    // App not on screen (closed, background, screen off): ring the phone with a notification.
     if (!isOnline(id) && prefs?.notifyCalls !== false) {
-      await sendPush(id, { title: `Incoming ${type === 'VIDEO' ? 'video' : 'voice'} call`, body: `${from.displayName} is calling you`, link: `/chats/${conversationId}?call=${call.id}`, tag: `call-${call.id}` });
+      void sendPush(id, { title: `Incoming ${type === 'VIDEO' ? 'video' : 'voice'} call`, body: `${from.displayName} is calling you`, link: `/chats/${conversationId}?call=${call.id}`, tag: `call-${call.id}`, call: true, callId: call.id });
     }
   }
-  calls.set(call.id, live);
   live.ringTimer = setTimeout(() => void ringTimeout(live), RING_MS);
   return { callId: call.id, calleeIds, reachable, sfu: group };
 }
@@ -285,6 +291,10 @@ export function activeCallCount() {
 
 export function attachCallHandlers(socket: S) {
   const uid = socket.data.userId;
+  // Opened from an incoming-call notification (or a tab that just reconnected): ring here too.
+  for (const c of calls.values()) {
+    if (c.incoming && c.parties.get(uid)?.state === 'ringing') socket.emit('call:incoming', c.incoming);
+  }
   const fail = (e: unknown) => ({ ok: false as const, error: e instanceof HttpError ? e.message : 'Something went wrong' });
   const safeAck = <T,>(ack: unknown): ((r: T) => void) => (typeof ack === 'function' ? (ack as (r: T) => void) : () => {});
 

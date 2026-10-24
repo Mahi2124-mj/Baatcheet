@@ -55,6 +55,41 @@ export async function resumePush() {
   await enablePush();
 }
 
+/**
+ * Shows a notification from this tab while it is in the background (the server's push may also arrive;
+ * the same tag makes them one notification). Works without push being set up.
+ */
+export async function localNotify(n: { title: string; body: string; link: string; tag: string; call?: boolean; callId?: string }) {
+  if (!pushSupported() || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(n.title, {
+      body: n.body,
+      tag: n.tag,
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      data: { link: n.link, call: Boolean(n.call), callId: n.callId ?? null },
+      requireInteraction: Boolean(n.call),
+      // Ring-like buzz for calls, a short one for messages.
+      vibrate: n.call ? [600, 300, 600, 300, 600, 300, 600, 300, 600] : [150],
+      actions: n.call ? [{ action: 'answer', title: 'Answer' }, { action: 'decline', title: 'Decline' }] : [],
+    } as NotificationOptions);
+  } catch {
+    // No service worker yet: the in-app toast still shows when the app is opened.
+  }
+}
+
+/** Removes a notification (e.g. the ringing call notification once the call was answered or ended). */
+export async function closeNotification(tag: string) {
+  if (!pushSupported()) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    (await reg?.getNotifications({ tag }))?.forEach((n) => n.close());
+  } catch {
+    // Nothing to close.
+  }
+}
+
 export async function disablePush() {
   rememberOff(true);
   const sub = await currentPush();

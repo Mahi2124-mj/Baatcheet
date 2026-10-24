@@ -226,6 +226,8 @@ export interface ClientToServer {
   /** After a socket reconnect during a call: take the call over on this new connection. */
   'call:resume': (input: { callId: string }, ack: Ack<{ peers: string[] }>) => void;
   'presence:query': (input: { userIds: string[] }, ack: Ack<Record<string, { online: boolean; lastSeenAt: string | null }>>) => void;
+  /** The app was shown / hidden (screen off, app switched). Online means visible somewhere. */
+  'presence:visible': (input: { visible: boolean }) => void;
 }
 
 export interface ServerToClient {

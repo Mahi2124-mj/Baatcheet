@@ -8,7 +8,7 @@ import { cx, dayLabel, lastSeen, newClientId } from '@/lib/format';
 import { refreshConversation, setActiveConversation } from '@/lib/realtime';
 import { useMe } from '@/lib/session';
 import { emitAck, getSocket } from '@/lib/socket';
-import { addPending, failPending, getState, patchConversation, upsertMessages, useStore } from '@/lib/store';
+import { addPending, failPending, getState, hideMessage, patchConversation, upsertMessages, useStore } from '@/lib/store';
 import type { Message } from '@/lib/types';
 import { Avatar, Empty, ErrorBox, IconButton, Skeleton, Spinner, useConfirm, useToast } from '../ui';
 import { Composer, type Outgoing } from './Composer';
@@ -28,6 +28,12 @@ export function ChatView({ id }: { id: string }) {
   const thread = useStore((s) => s.threads[id]);
   const typing = useStore((s) => s.typing[id]);
   const presence = useStore((s) => s.presence);
+  // "last seen 3 min ago" has to move on by itself.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
   const connected = useStore((s) => s.connected);
   const [error, setError] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -171,6 +177,19 @@ export function ChatView({ id }: { id: string }) {
       }
     },
     [id, toast],
+  );
+
+  const hide = useCallback(
+    async (m: Message) => {
+      hideMessage(id, m.id);
+      try {
+        await api.post(`/messages/${m.id}/hide`);
+      } catch (e) {
+        toast(errorText(e), 'error');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id],
   );
 
   const del = useCallback(
@@ -370,6 +389,7 @@ export function ChatView({ id }: { id: string }) {
                   onReply={setReplyTo}
                   onEdit={setEditing}
                   onDelete={del}
+                  onHide={hide}
                   onReact={react}
                   onReport={setReport}
                   onRetry={retry}

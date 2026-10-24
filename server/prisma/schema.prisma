@@ -101,6 +101,7 @@ model User {
   memberships      ConversationMember[]
   messages         Message[]
   reactions        MessageReaction[]
+  hiddenMessages   HiddenMessage[]
   callsStarted     Call[]
   callParticipants CallParticipant[]
   notifications    Notification[]
@@ -263,6 +264,7 @@ model Message {
 
   attachments MessageAttachment[]
   reactions   MessageReaction[]
+  hiddenBy    HiddenMessage[]
   reports     UserReport[]
 
   @@unique([senderId, clientId])
@@ -421,4 +423,16 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([actorId])
+}
+
+/// "Delete for me": a message (or call / system line) one user removed from their own view of a chat.
+model HiddenMessage {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, messageId])
+  @@index([messageId])
 }

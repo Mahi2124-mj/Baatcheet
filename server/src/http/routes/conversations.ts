@@ -227,7 +227,7 @@ conversations.get('/:id/messages', h(async (req, res) => {
   const self = me(req).id;
   const m = await anyMember(self, req.params.id);
   const rows = await prisma.message.findMany({
-    where: { conversationId: m.conversationId, createdAt: historyWindow(m, m.conversation.type === 'GROUP') },
+    where: { conversationId: m.conversationId, createdAt: historyWindow(m, m.conversation.type === 'GROUP'), hiddenBy: { none: { userId: self } } },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: q.limit + 1,
     ...(q.before ? { cursor: { id: q.before }, skip: 1 } : {}),

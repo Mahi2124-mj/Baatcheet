@@ -9,6 +9,22 @@ FILES=(-f docker-compose.yml -f docker-compose.home.yml)
 [ -d server ] || FILES+=(-f docker-compose.release.yml)
 dc() { docker compose "${FILES[@]}" --profile "$MODE" "$@"; }
 
+# Push notifications (calls / messages while the app is closed) need VAPID keys. Make them once if .env
+# has none — without them the server can't send any notification.
+if ! grep -q '^VAPID_PUBLIC_KEY=..*' .env || ! grep -q '^VAPID_PRIVATE_KEY=..*' .env; then
+  KEYS="$(docker run --rm node:22-alpine npx -y web-push@3.6.7 generate-vapid-keys --json 2>/dev/null || true)"
+  PUB="$(printf '%s' "$KEYS" | grep -o '"publicKey":"[^"]*"' | cut -d'"' -f4)"
+  PRIV="$(printf '%s' "$KEYS" | grep -o '"privateKey":"[^"]*"' | cut -d'"' -f4)"
+  if [ -n "$PUB" ] && [ -n "$PRIV" ]; then
+    sed -i '/^VAPID_PUBLIC_KEY=/d; /^VAPID_PRIVATE_KEY=/d' .env
+    printf 'VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n' "$PUB" "$PRIV" >> .env
+    grep -q '^VAPID_SUBJECT=' .env || echo 'VAPID_SUBJECT=mailto:admin@example.com' >> .env
+    echo "Created push notification keys in .env"
+  else
+    echo "WARNING: couldn't create push notification keys (no internet?). Notifications for a closed app stay off until you run this again."
+  fi
+fi
+
 [ -d server ] || dc pull -q
 dc up -d --remove-orphans "${@}"
 docker image prune -f >/dev/null 2>&1 || true

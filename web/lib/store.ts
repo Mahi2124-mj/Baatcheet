@@ -64,7 +64,12 @@ export function putConversations(list: ConversationSummary[], replace = false) {
     const conversations = replace ? {} : { ...s.conversations };
     for (const c of list) conversations[c.id] = c;
     const presence = { ...s.presence };
-    for (const c of list) for (const m of c.members) if (m.online !== undefined) presence[m.id] = { online: Boolean(m.online), lastSeenAt: m.lastSeenAt ?? null };
+    for (const c of list)
+      for (const m of c.members) {
+        if (m.online !== undefined) presence[m.id] = { online: Boolean(m.online), lastSeenAt: m.lastSeenAt ?? null };
+        // They hid their last seen since: forget what we knew.
+        else delete presence[m.id];
+      }
     return { conversations, conversationsLoaded: true, presence };
   });
 }
@@ -89,12 +94,25 @@ function sortMessages(list: Message[]) {
   return list.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
+/** Messages removed with "Delete for me" in this tab, so a later update (reaction, edit) can't bring them back. */
+const hiddenIds = new Set<string>();
+
+/** "Delete for me": takes a message out of the thread. */
+export function hideMessage(conversationId: string, messageId: string) {
+  hiddenIds.add(messageId);
+  setState((s) => {
+    const t = s.threads[conversationId];
+    if (!t) return {};
+    return { threads: { ...s.threads, [conversationId]: { ...t, messages: t.messages.filter((m) => m.id !== messageId) } } };
+  });
+}
+
 /** Adds or replaces messages by id; drops matching pending copies (same clientId). */
 export function upsertMessages(conversationId: string, incoming: Message[], page?: { nextCursor: string | null; older: boolean }) {
   setState((s) => {
     const t = s.threads[conversationId] ?? emptyThread();
     const byId = new Map(t.messages.map((m) => [m.id, m]));
-    for (const m of incoming) byId.set(m.id, m);
+    for (const m of incoming) if (!hiddenIds.has(m.id)) byId.set(m.id, m);
     const clientIds = new Set(incoming.map((m) => m.clientId).filter(Boolean));
     const thread: Thread = {
       messages: sortMessages([...byId.values()]),

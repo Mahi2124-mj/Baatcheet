@@ -5,7 +5,7 @@ import { prisma } from '../../db.js';
 import { badRequest, forbidden, h, notFound, parse } from '../../lib/errors.js';
 import { deleteObject } from '../../lib/storage.js';
 import { toConversation } from '../../realtime/hub.js';
-import { activeMember, historyWindow } from '../../services/access.js';
+import { activeMember, anyMember, historyWindow } from '../../services/access.js';
 import { loadMessage, messageInclude, toMessage } from '../../services/messages.js';
 import { me } from '../session.js';
 
@@ -34,6 +34,7 @@ messages.get('/search', h(async (req, res) => {
       deletedAt: null,
       kind: 'TEXT',
       body: { contains: q.q, mode: 'insensitive' },
+      hiddenBy: { none: { userId: self } },
       OR: memberships.map((m) => ({ conversationId: m.conversationId, createdAt: historyWindow(m, m.conversation.type === 'GROUP') })),
     },
     orderBy: { createdAt: 'desc' },
@@ -53,6 +54,19 @@ messages.patch('/:id', h(async (req, res) => {
   const out = await loadMessage(msg.id);
   toConversation(msg.conversationId, 'message:updated', out);
   res.json(out);
+}));
+
+/** "Delete for me": hides a message (any kind, anyone's) from this user's view of the chat only. */
+messages.post('/:id/hide', h(async (req, res) => {
+  const self = me(req).id;
+  const msg = await prisma.message.findUnique({ where: { id: req.params.id } });
+  if (!msg) throw notFound('Message not found');
+  const member = await anyMember(self, msg.conversationId);
+  const w = historyWindow(member, member.conversation.type === 'GROUP');
+  // Only messages this member could see.
+  if ((w.gt && msg.createdAt <= w.gt) || (w.lte && msg.createdAt > w.lte)) throw notFound('Message not found');
+  await prisma.hiddenMessage.createMany({ data: [{ userId: self, messageId: msg.id }], skipDuplicates: true });
+  res.json({ ok: true });
 }));
 
 messages.delete('/:id', h(async (req, res) => {

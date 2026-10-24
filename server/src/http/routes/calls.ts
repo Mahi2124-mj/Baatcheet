@@ -4,7 +4,7 @@ import type { CallRecord } from '@baatcheet/shared';
 import { prisma } from '../../db.js';
 import { h, notFound, parse } from '../../lib/errors.js';
 import { iceConfigFor } from '../../lib/turn.js';
-import { callForUser } from '../../realtime/calls.js';
+import { callForUser, rejectCall } from '../../realtime/calls.js';
 import { livekitEnabled, livekitToken } from '../../services/livekit.js';
 import { publicUsers, withProfile } from '../../services/users.js';
 import { me } from '../session.js';
@@ -49,6 +49,13 @@ calls.get('/', h(async (req, res) => {
     missed: c.participants.find((p) => p.userId === self)?.response === 'missed',
   }));
   res.json({ items, nextCursor: rows.length > 30 ? page[29].id : null });
+}));
+
+/** Decline from the incoming-call notification (the app isn't open). */
+calls.post('/:id/decline', h(async (req, res) => {
+  // Already answered elsewhere, ended or not ours: nothing to decline.
+  await rejectCall(me(req).id, req.params.id).catch(() => {});
+  res.json({ ok: true });
 }));
 
 /** Deletes one call from the user's own call history (the other people still see it). */

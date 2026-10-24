@@ -25,10 +25,15 @@ export function lastSeen(online: boolean | undefined, iso: string | null | undef
   if (online) return 'online';
   if (!iso) return '';
   const d = new Date(iso);
-  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
   if (mins < 1) return 'last seen just now';
   if (mins < 60) return `last seen ${mins} min ago`;
-  return `last seen ${timeShort(iso)}${new Date().toDateString() === d.toDateString() ? '' : ` at ${clock(iso)}`}`;
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86400_000);
+  if (d.toDateString() === today.toDateString()) return `last seen today at ${clock(iso)}`;
+  if (d.toDateString() === yesterday.toDateString()) return `last seen yesterday at ${clock(iso)}`;
+  const date = d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+  return `last seen ${date} at ${clock(iso)}`;
 }
 
 export function duration(sec: number) {

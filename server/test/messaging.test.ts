@@ -107,6 +107,23 @@ describe('direct messages', () => {
     expect(found.body.map((x: Message) => x.id)).toEqual([m.body.id]);
   });
 
+  it('"delete for me" hides a message from one person only', async () => {
+    const { a, b, convId } = await pair();
+    const first = (await send(a, convId, 'one').expect(201)).body;
+    const second = (await send(a, convId, 'two').expect(201)).body;
+    const list = async (u: TestUser) => (await u.agent.get(`/api/conversations/${convId}/messages`).expect(200)).body.messages.map((m: { id: string }) => m.id);
+    // b hides a's message (someone else's); outsiders can't.
+    const c = await register(srv);
+    await c.agent.post(`/api/messages/${second.id}/hide`).expect(404);
+    await b.agent.post(`/api/messages/${second.id}/hide`).expect(200);
+    await b.agent.post(`/api/messages/${second.id}/hide`).expect(200);
+    expect(await list(b)).toEqual([first.id]);
+    expect(await list(a)).toEqual([first.id, second.id]);
+    // The chat list preview skips it too.
+    const convs = (await b.agent.get('/api/conversations').expect(200)).body;
+    expect(convs.find((x: { id: string }) => x.id === convId).lastMessage.id).toBe(first.id);
+  });
+
   it('read receipts, typing and presence', async () => {
     const { a, b, convId } = await pair();
     const sa = await connect(srv, a);

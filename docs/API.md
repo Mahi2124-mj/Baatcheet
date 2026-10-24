@@ -91,6 +91,7 @@ Invites: `GET /api/invites/:code` (preview), `POST /api/invites/:code/join`.
 | DELETE | `/:id` | Delete for everyone: sender, or a group admin. Files are deleted from storage. |
 | POST | `/:id/reactions` | `{emoji}` (one per person; replaces yours). |
 | DELETE | `/:id/reactions` | Remove yours. |
+| POST | `/:id/hide` | "Delete for me": hide any message (also call / system lines) from your own view of the chat. |
 
 ## Uploads — `/api/uploads`
 
@@ -108,6 +109,7 @@ Downloads are signed URLs (1 h) handed only to members of the chat.
 | GET | `/ice-servers` | `{iceServers, ttl}` — STUN + TURN with per-user credentials that expire. |
 | GET | `/config` | `{groupCalls: boolean}` (LiveKit configured). |
 | GET | `/?before=&missed=1` | Call history `{items: [{id, type, status, startedAt, answeredAt, endedAt, participants, outgoing, missed}], nextCursor}` |
+| POST | `/:id/decline` | Decline a ringing call (the notification's Decline button). |
 | DELETE | `/:id` | Remove a finished call from **your** call history (others keep it). |
 | DELETE | `/?missed=1` | Clear your call history (or only missed calls). Calls in progress stay. |
 | POST | `/:id/token` | LiveKit `{url, token}` for a group call you joined. |

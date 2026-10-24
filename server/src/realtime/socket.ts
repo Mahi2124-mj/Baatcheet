@@ -7,7 +7,7 @@ import { Bucket } from '../lib/rate.js';
 import { logger } from '../logger.js';
 import { sessionFromCookie } from '../http/session.js';
 import { sendMessage, setReceipt } from '../services/messages.js';
-import { connected, disconnected, isOnline } from '../services/presence.js';
+import { addSocket, isOnline, removeSocket, setVisible } from '../services/presence.js';
 import { attachCallHandlers, socketGone } from './calls.js';
 import { convRoom, setIo, toUser, userRoom, type IO } from './hub.js';
 
@@ -39,6 +39,37 @@ async function presenceAudience(userId: string): Promise<string[]> {
 
 async function broadcastPresence(userId: string, online: boolean, lastSeenAt: Date | null) {
   for (const id of await presenceAudience(userId)) toUser(id, 'presence', { userId, online, lastSeenAt: lastSeenAt?.toISOString() ?? null });
+}
+
+// Going away is announced after a short pause, so switching apps for a moment or a socket reconnect
+// doesn't flash "last seen" to others. Last seen is the moment the app was hidden.
+const AWAY_DELAY_MS = process.env.NODE_ENV === 'test' ? 50 : 4000;
+const awayTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const announcedOnline = new Set<string>();
+
+function wentOnline(uid: string) {
+  clearTimeout(awayTimers.get(uid));
+  awayTimers.delete(uid);
+  if (announcedOnline.has(uid)) return;
+  announcedOnline.add(uid);
+  void broadcastPresence(uid, true, null).catch((e) => logger.warn(e, 'presence'));
+}
+
+function wentAway(uid: string) {
+  const at = new Date();
+  clearTimeout(awayTimers.get(uid));
+  awayTimers.set(
+    uid,
+    setTimeout(async () => {
+      awayTimers.delete(uid);
+      if (isOnline(uid)) return;
+      announcedOnline.delete(uid);
+      await prisma.user.update({ where: { id: uid }, data: { lastSeenAt: at } }).catch(() => {});
+      // Came back while the database was written: don't announce a stale "away".
+      if (isOnline(uid)) return;
+      void broadcastPresence(uid, false, at).catch(() => {});
+    }, AWAY_DELAY_MS),
+  );
 }
 
 const fail = (e: unknown) => ({ ok: false as const, error: e instanceof HttpError ? e.message : 'Something went wrong' });
@@ -77,7 +108,14 @@ export function createSocketServer(http: HttpServer): IO {
       .findMany({ where: { userId: uid, leftAt: null }, select: { conversationId: true } })
       .then((convs) => socket.join(convs.map((c) => convRoom(c.conversationId))))
       .catch((e) => logger.warn(e, 'join rooms'));
-    if (connected(uid)) void broadcastPresence(uid, true, null).catch((e) => logger.warn(e, 'presence'));
+    // Older clients don't say; treat them as visible.
+    const visible = (socket.handshake.auth as { visible?: unknown } | undefined)?.visible !== false;
+    if (addSocket(uid, socket.id, visible) === 'up') wentOnline(uid);
+    socket.on('presence:visible', (input) => {
+      const change = setVisible(uid, socket.id, Boolean(input?.visible));
+      if (change === 'up') wentOnline(uid);
+      else if (change === 'down') wentAway(uid);
+    });
 
     socket.on('message:send', async (input, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {};
@@ -113,8 +151,11 @@ export function createSocketServer(http: HttpServer): IO {
         const ids = Array.isArray(input?.userIds) ? input.userIds.slice(0, 200).map(String) : [];
         const users = await prisma.user.findMany({ where: { id: { in: ids } }, include: { profile: true } });
         const contactsOf = new Set((await prisma.contact.findMany({ where: { ownerId: { in: ids }, contactId: uid } })).map((c) => c.ownerId));
+        const blocks = await prisma.blockedUser.findMany({ where: { OR: [{ blockerId: uid, blockedId: { in: ids } }, { blockedId: uid, blockerId: { in: ids } }] } });
+        const blocked = new Set(blocks.flatMap((b) => [b.blockerId, b.blockedId]));
         const out: Record<string, { online: boolean; lastSeenAt: string | null }> = {};
         for (const u of users) {
+          if (blocked.has(u.id)) continue;
           const v = u.profile?.lastSeenVisibility;
           if (v === 'EVERYONE' || (v === 'CONTACTS' && contactsOf.has(u.id))) out[u.id] = { online: isOnline(u.id), lastSeenAt: u.lastSeenAt?.toISOString() ?? null };
         }
@@ -128,11 +169,7 @@ export function createSocketServer(http: HttpServer): IO {
 
     socket.on('disconnect', async () => {
       socketGone(uid, socket.id);
-      if (disconnected(uid)) {
-        const at = new Date();
-        await prisma.user.update({ where: { id: uid }, data: { lastSeenAt: at } }).catch(() => {});
-        void broadcastPresence(uid, false, at).catch(() => {});
-      }
+      if (removeSocket(uid, socket.id) === 'down') wentAway(uid);
     });
   });
 

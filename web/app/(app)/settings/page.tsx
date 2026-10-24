@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Camera, ChevronRight, LogOut, Monitor, Moon, Smartphone, Sun } from 'lucide-react';
 import { api, errorText, uploadFile } from '@/lib/api';
-import { disablePush, pushSupported } from '@/lib/push';
+import { currentPush, disablePush, enablePush, pushSupported } from '@/lib/push';
 import { backgroundEnabled, setBackground, subscribeBackground } from '@/lib/background';
 import { useSession } from '@/lib/session';
 import { closeSocket } from '@/lib/socket';
@@ -41,6 +41,13 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<'system' | 'dark' | 'light'>('system');
   const [sessions, setSessions] = useState<Sess[]>([]);
   const background = useSyncExternalStore(subscribeBackground, backgroundEnabled, () => true);
+  // What this phone really has, not just the switch: subscribed / not yet / blocked / unsupported.
+  const [pushState, setPushState] = useState<'unknown' | 'on' | 'off' | 'blocked' | 'unsupported'>('unknown');
+  const checkPush = async () => {
+    if (!pushSupported()) return setPushState('unsupported');
+    if (Notification.permission === 'denied') return setPushState('blocked');
+    setPushState((await currentPush().catch(() => null)) ? 'on' : 'off');
+  };
   const [pw, setPw] = useState<{ current: string; password: string } | null>(null);
   const [del, setDel] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -49,6 +56,7 @@ export default function SettingsPage() {
     const t = document.documentElement.dataset.theme;
     setTheme(t === 'light' || t === 'dark' ? t : 'system');
     api.get<Sess[]>('/auth/sessions').then(setSessions, () => {});
+    void checkPush();
   }, []);
 
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
@@ -153,8 +161,24 @@ export default function SettingsPage() {
                 : 'Nothing arrives until you open the app; you’ll see everything you missed when you do.'
             }
             checked={background}
-            onChange={(v) => run(() => setBackground(v), v ? 'Running in background' : 'Background off')}
+            onChange={(v) => run(async () => { await setBackground(v); await checkPush(); }, v ? 'Running in background' : 'Background off')}
           />
+          {background && pushState !== 'on' && pushState !== 'unknown' && (
+            <div className="mt-1 rounded-xl bg-accent-soft p-3 text-sm">
+              <p>
+                {pushState === 'blocked'
+                  ? 'Notifications are blocked for this site. Allow them in the browser’s site settings (lock icon → Notifications), then come back.'
+                  : pushState === 'unsupported'
+                    ? 'This browser can’t show notifications when the app is closed.'
+                    : 'Notifications are not on for this phone yet, so nothing arrives while the app is closed.'}
+              </p>
+              {pushState === 'off' && (
+                <Button size="sm" className="mt-2" onClick={() => run(async () => { await enablePush(); await checkPush(); }, 'Notifications on')}>
+                  Turn on notifications
+                </Button>
+              )}
+            </div>
+          )}
           <p className="pt-2 text-xs text-muted">
             {pushSupported()
               ? 'With the app closed or the phone asleep, calls arrive as a notification that opens the chat. Keep the app open to answer instantly.'

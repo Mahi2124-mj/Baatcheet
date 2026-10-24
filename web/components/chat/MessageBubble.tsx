@@ -1,6 +1,6 @@
 'use client';
-import { memo, useState } from 'react';
-import { AlertCircle, Check, CheckCheck, Clock, Copy, FileText, Flag, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { memo, useRef, useState } from 'react';
+import { AlertCircle, Check, CheckCheck, Clock, Copy, EyeOff, FileText, Flag, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { bytes, clock, cx } from '@/lib/format';
 import type { Message } from '@/lib/types';
 
@@ -42,6 +42,36 @@ function Attachments({ m }: { m: Message }) {
   );
 }
 
+/**
+ * Long-press on touch screens (phones have no right-click / hover): opens the message menu after 450 ms
+ * unless the finger moved (scrolling).
+ */
+function useLongPress(open: () => void) {
+  const t = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const cancel = () => {
+    if (t.current) clearTimeout(t.current);
+    t.current = null;
+    start.current = null;
+  };
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      start.current = { x: e.clientX, y: e.clientY };
+      t.current = setTimeout(() => {
+        t.current = null;
+        navigator.vibrate?.(15);
+        open();
+      }, 450);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      if (start.current && Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > 10) cancel();
+    },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+  };
+}
+
 interface Props {
   m: Message & { failed?: boolean };
   mine: boolean;
@@ -55,23 +85,53 @@ interface Props {
   onReply: (m: Message) => void;
   onEdit: (m: Message) => void;
   onDelete: (m: Message) => void;
+  /** "Delete for me": hide it from this user's chat only. */
+  onHide: (m: Message) => void;
   onReact: (m: Message, emoji: string | null) => void;
   onReport: (m: Message) => void;
   onRetry?: (m: Message) => void;
   onJump: (id: string) => void;
 }
 
-function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, myId, canDelete, highlight, onReply, onEdit, onDelete, onReact, onReport, onRetry, onJump }: Props) {
+function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, myId, canDelete, highlight, onReply, onEdit, onDelete, onHide, onReact, onReport, onRetry, onJump }: Props) {
   const [menu, setMenu] = useState(false);
+  const press = useLongPress(() => setMenu(true));
   const deleted = Boolean(m.deletedAt);
   const myReaction = m.reactions.find((r) => r.userIds.includes(myId))?.emoji ?? null;
 
   if (m.kind === 'SYSTEM' || m.kind === 'CALL') {
+    // Call / system lines: long-press (or right-click) → "Delete for me".
     return (
-      <div id={`m-${m.id}`} className="my-2 flex justify-center">
-        <span className="rounded-full bg-panel-2 px-3 py-1 text-xs text-muted">
+      <div id={`m-${m.id}`} className="relative my-2 flex justify-center">
+        <span
+          {...press}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setMenu(true);
+          }}
+          className="select-none rounded-full bg-panel-2 px-3 py-1 text-xs text-muted"
+          style={{ WebkitTouchCallout: 'none' }}
+        >
           {m.body} · {clock(m.createdAt)}
         </span>
+        {menu && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} aria-hidden />
+            <div role="menu" className="absolute top-full z-40 mt-1 w-48 rounded-xl border border-line bg-panel p-1 shadow-2xl">
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenu(false);
+                  onHide(m);
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-hover"
+              >
+                <Trash2 className="size-4" />
+                Delete for me
+              </button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -82,11 +142,13 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
       <div className={cx('relative max-w-[85%] sm:max-w-[70%]', highlight && 'animate-pulse')}>
         <div
           className={cx('rounded-[20px] px-3.5 py-2 text-[17px] leading-snug', mine ? 'rounded-br-[6px] bg-bubble-me text-bubble-me-ink' : 'rounded-bl-[6px] bg-bubble-them text-bubble-them-ink', deleted && 'italic opacity-70')}
+          {...(pending ? {} : press)}
           onContextMenu={(e) => {
-            if (deleted || pending) return;
+            if (pending) return;
             e.preventDefault();
             setMenu(true);
           }}
+          style={{ WebkitTouchCallout: 'none' }}
         >
           {showSender && !mine && senderName && <p className="mb-0.5 text-xs font-semibold text-accent">{senderName}</p>}
           {m.replyTo && !deleted && (
@@ -141,7 +203,7 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
           <>
             <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} aria-hidden />
             <div role="menu" className={cx('absolute z-40 mt-1 w-52 rounded-xl border border-line bg-panel p-1 shadow-2xl', mine ? 'right-0' : 'left-0')}>
-              <div className="flex justify-between px-1 py-1">
+              {!deleted && <div className="flex justify-between px-1 py-1">
                 {QUICK_REACTIONS.map((e) => (
                   <button
                     key={e}
@@ -156,13 +218,14 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
                     {e}
                   </button>
                 ))}
-              </div>
+              </div>}
               {[
-                { label: 'Reply', icon: Reply, run: () => onReply(m), show: true },
-                { label: 'Copy', icon: Copy, run: () => void navigator.clipboard?.writeText(m.body ?? ''), show: Boolean(m.body) },
-                { label: 'Edit', icon: Pencil, run: () => onEdit(m), show: mine && Boolean(m.body) && Date.now() - new Date(m.createdAt).getTime() < 48 * 3600_000 },
-                { label: 'Delete for everyone', icon: Trash2, run: () => onDelete(m), show: canDelete },
-                { label: 'Report', icon: Flag, run: () => onReport(m), show: !mine },
+                { label: 'Reply', icon: Reply, run: () => onReply(m), show: !deleted },
+                { label: 'Copy', icon: Copy, run: () => void navigator.clipboard?.writeText(m.body ?? ''), show: !deleted && Boolean(m.body) },
+                { label: 'Edit', icon: Pencil, run: () => onEdit(m), show: !deleted && mine && Boolean(m.body) && Date.now() - new Date(m.createdAt).getTime() < 48 * 3600_000 },
+                { label: 'Delete for me', icon: EyeOff, run: () => onHide(m), show: true },
+                { label: 'Delete for everyone', icon: Trash2, run: () => onDelete(m), show: !deleted && canDelete },
+                { label: 'Report', icon: Flag, run: () => onReport(m), show: !deleted && !mine },
               ]
                 .filter((x) => x.show)
                 .map((x) => (
