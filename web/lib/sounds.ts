@@ -2,6 +2,11 @@
 // Short alert sounds for new messages while the app is open (made with Web Audio, no files to load).
 let ctx: AudioContext | null = null;
 
+/** One shared, already unlocked audio output (a background tab can only make sound through this). */
+export function sharedAudio() {
+  return audio();
+}
+
 function audio() {
   try {
     ctx ??= new AudioContext();

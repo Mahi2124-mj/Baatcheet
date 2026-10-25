@@ -38,6 +38,14 @@ interface LiveCall {
   startedAt: number;
   /** What callees were sent, so a tab that connects while the call rings (opened from the notification) rings too. */
   incoming?: Parameters<ServerToClient['call:incoming']>[0];
+  /** Callees whose phones were rung by push; they get a "stop ringing" push when that's over. */
+  pushed: Set<string>;
+}
+
+/** Tells a phone's service worker to stop ringing for this call (answered, declined, ended). */
+function stopRinging(c: LiveCall, userId: string) {
+  if (!c.pushed.delete(userId)) return;
+  void sendPush(userId, { title: '', body: '', tag: `call-${c.id}`, cancel: true, callId: c.id });
 }
 
 const calls = new Map<string, LiveCall>();
@@ -68,6 +76,7 @@ async function finish(c: LiveCall, status: CallStatus, by: string | null) {
   if (!calls.has(c.id)) return;
   calls.delete(c.id);
   clearTimeout(c.ringTimer);
+  for (const id of [...c.pushed]) stopRinging(c, id);
   for (const p of c.parties.values()) clearTimeout(p.dropTimer);
   const now = new Date();
   await prisma.call.update({ where: { id: c.id }, data: { status, endedAt: now } });
@@ -126,6 +135,7 @@ export async function startCall(userId: string, socketId: string, conversationId
     parties: new Map([[userId, { userId, socketId, state: 'joined' }]]),
     answered: false,
     startedAt: Date.now(),
+    pushed: new Set(),
   };
 
   const from = await publicUser(await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: withProfile }), null);
@@ -149,7 +159,9 @@ export async function startCall(userId: string, socketId: string, conversationId
     const prefs = await prisma.userProfile.findUnique({ where: { userId: id }, select: { notifyCalls: true } });
     // App not on screen (closed, background, screen off): ring the phone with a notification.
     if (!isOnline(id) && prefs?.notifyCalls !== false) {
-      void sendPush(id, { title: `Incoming ${type === 'VIDEO' ? 'video' : 'voice'} call`, body: `${from.displayName} is calling you`, link: `/chats/${conversationId}?call=${call.id}`, tag: `call-${call.id}`, call: true, callId: call.id });
+      live.pushed.add(id);
+      // The phone rings (repeated notification with sound and vibration) until this call stops ringing.
+      void sendPush(id, { title: `Incoming ${type === 'VIDEO' ? 'video' : 'voice'} call`, body: `${from.displayName} · tap to answer`, link: `/chats/${conversationId}?call=${call.id}`, tag: `call-${call.id}`, call: true, callId: call.id, ringMs: RING_MS });
     }
   }
   live.ringTimer = setTimeout(() => void ringTimeout(live), RING_MS);
@@ -203,6 +215,8 @@ export async function acceptCall(userId: string, socketId: string, callId: strin
   }
   await prisma.callParticipant.update({ where: { callId_userId: { callId, userId } }, data: { joinedAt: now, leftAt: null, response: 'accepted' } });
   emitParties(c, (u) => toUser(u, 'call:accepted', { callId, userId }));
+  // Answered here: the user's other phones stop ringing.
+  stopRinging(c, userId);
   c = calls.get(callId)!;
   return { type: c.type, sfu: c.group, peers: joined(c).map((x) => x.userId).filter((x) => x !== userId) };
 }
@@ -211,6 +225,7 @@ export async function rejectCall(userId: string, callId: string, reason: 'declin
   const { c, p } = liveFor(userId, callId);
   if (p.state !== 'ringing') return;
   p.state = 'declined';
+  stopRinging(c, userId);
   await prisma.callParticipant.update({ where: { callId_userId: { callId, userId } }, data: { response: reason } });
   emitParties(c, (u) => toUser(u, 'call:rejected', { callId, userId, reason }));
   if (!c.group) return finish(c, reason === 'busy' ? 'BUSY' : 'REJECTED', userId);

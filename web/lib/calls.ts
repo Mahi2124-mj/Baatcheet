@@ -8,6 +8,7 @@ import type { CallType, IceConfig, PublicUser, SignalData } from '@baatcheet/sha
 import type { Room } from 'livekit-client';
 import { api } from './api';
 import { closeNotification, localNotify } from './push';
+import { sharedAudio } from './sounds';
 import { defaultRoute, listRoutes, type AudioRoute, type RouteOption } from './audioRoute';
 import { emitAck, getSocket } from './socket';
 
@@ -104,11 +105,9 @@ class Tone {
   private timer: ReturnType<typeof setInterval> | null = null;
   play(kind: 'ring' | 'ringback') {
     this.stop();
-    try {
-      this.ctx = new AudioContext();
-    } catch {
-      return;
-    }
+    // The shared output was unlocked by an earlier tap, so it also rings while the app is in the background.
+    this.ctx = sharedAudio();
+    if (!this.ctx) return;
     const beep = () => {
       const ctx = this.ctx;
       if (!ctx) return;
@@ -132,7 +131,7 @@ class Tone {
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    void this.ctx?.close().catch(() => {});
+    // Shared output: not closed, just no new beeps.
     this.ctx = null;
   }
 }
@@ -167,8 +166,14 @@ export class CallController {
     this.myId = myId;
     if (this.bound) return;
     this.bound = true;
+    this.listenToNotifications();
     const s = getSocket();
     s.on('call:incoming', (c) => {
+      // The same call sent again (this tab reconnected, or opened from the notification).
+      if (c.callId === this.state.callId && this.state.phase !== 'ended') {
+        this.answerFromNotification(c.callId);
+        return;
+      }
       if (this.state.phase !== 'idle' && this.state.phase !== 'ended') {
         // Already on a call: tell the caller we're busy (group calls just keep ringing others).
         if (!c.group) s.emit('call:reject', { callId: c.callId, reason: 'busy' });
@@ -189,12 +194,13 @@ export class CallController {
       this.tone.play('ring');
       void localNotify({
         title: `Incoming ${c.type === 'VIDEO' ? 'video' : 'voice'} call`,
-        body: c.group ? `${c.from.displayName} · ${c.groupName ?? 'Group'}` : `${c.from.displayName} is calling you`,
+        body: `${c.group ? `${c.from.displayName} · ${c.groupName ?? 'Group'}` : c.from.displayName} · tap to answer`,
         link: `/chats/${c.conversationId}?call=${c.callId}`,
         tag: `call-${c.callId}`,
         call: true,
         callId: c.callId,
       });
+      this.answerFromNotification(c.callId);
     });
     s.on('call:accepted', ({ callId, userId }) => {
       if (callId !== this.state.callId) return;
@@ -252,6 +258,25 @@ export class CallController {
         },
         () => this.finish('Connection lost', false),
       );
+    });
+  }
+
+  /** "Answer" on the call notification opens the app with ?call=<id>&answer=1: pick up straight away. */
+  private answerFromNotification(callId: string) {
+    const q = new URLSearchParams(location.search);
+    if (q.get('call') !== callId || q.get('answer') !== '1') return;
+    q.delete('answer');
+    q.delete('call');
+    const rest = q.toString();
+    history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
+    if (this.state.phase === 'incoming') void this.accept();
+  }
+
+  /** The call notification's Mute button: silence the ringtone here too. */
+  private listenToNotifications() {
+    navigator.serviceWorker?.addEventListener('message', (e: MessageEvent) => {
+      const d = e.data as { type?: string; callId?: string } | null;
+      if (d?.type === 'call-mute' && d.callId === this.state.callId && this.state.phase === 'incoming') this.tone.stop();
     });
   }
 

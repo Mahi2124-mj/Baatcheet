@@ -68,11 +68,12 @@ export async function localNotify(n: { title: string; body: string; link: string
       tag: n.tag,
       icon: '/icon.svg',
       badge: '/icon.svg',
-      data: { link: n.link, call: Boolean(n.call), callId: n.callId ?? null },
+      data: { link: n.link, call: Boolean(n.call), callId: n.callId ?? null, tag: n.tag, title: n.title, body: n.body },
       requireInteraction: Boolean(n.call),
       // Ring-like buzz for calls, a short one for messages.
-      vibrate: n.call ? [600, 300, 600, 300, 600, 300, 600, 300, 600] : [150],
-      actions: n.call ? [{ action: 'answer', title: 'Answer' }, { action: 'decline', title: 'Decline' }] : [],
+      vibrate: n.call ? [800, 400, 800, 400, 800] : [150],
+      // Same buttons as the push version (sw.js): tap = answer.
+      actions: n.call ? [{ action: 'mute', title: 'Mute' }, { action: 'decline', title: 'Decline' }] : [],
     } as NotificationOptions);
   } catch {
     // No service worker yet: the in-app toast still shows when the app is opened.
