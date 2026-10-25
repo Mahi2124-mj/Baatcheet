@@ -162,7 +162,7 @@ export default function SettingsPage() {
               size="sm"
               className="text-danger"
               onClick={async () => {
-                if (!(await confirm({ title: 'Clear all chats?', text: 'Every message in every chat disappears for you. Other people keep theirs. Chats stay in your list.', confirm: 'Clear all', danger: true }))) return;
+                if (!(await confirm({ title: 'Clear all chats?', text: 'Every message and file in all your chats is deleted for good, for everyone in them. Chats stay in your list. This can’t be undone.', confirm: 'Clear all', danger: true }))) return;
                 await run(async () => {
                   await api.post('/conversations/clear-all');
                   clearAllThreads();

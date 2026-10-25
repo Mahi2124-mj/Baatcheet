@@ -108,6 +108,15 @@ export function clearThread(conversationId: string) {
   });
 }
 
+/** Someone cleared the chat: drop everything up to that moment (newer messages stay). */
+export function clearThreadBefore(conversationId: string, before: string) {
+  setState((s) => {
+    const t = s.threads[conversationId];
+    if (!t) return {};
+    return { threads: { ...s.threads, [conversationId]: { ...t, messages: t.messages.filter((m) => m.createdAt > before) } } };
+  });
+}
+
 /** "Clear all chats". */
 export function clearAllThreads() {
   setState((s) => ({

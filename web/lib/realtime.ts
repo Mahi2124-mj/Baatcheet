@@ -3,7 +3,7 @@
 import { api } from './api';
 import { calls } from './calls';
 import { getSocket } from './socket';
-import { getState, messageArrived, messageUpdated, putConversations, removeConversation, setPresence, setReceipt, setState, setTyping, upsertMessages } from './store';
+import { clearThreadBefore, getState, hideMessage, messageArrived, messageUpdated, putConversations, removeConversation, setPresence, setReceipt, setState, setTyping, upsertMessages } from './store';
 import type { AppNotification, ConversationSummary } from './types';
 
 let bound = false;
@@ -65,6 +65,15 @@ export function bindRealtime(myId: string) {
     setTyping(m.conversationId, m.senderId ?? '', false);
   });
   s.on('message:updated', messageUpdated);
+  // Deleted for good by someone in the chat: drop it here too.
+  s.on('message:removed', ({ conversationId, messageIds }) => {
+    messageIds.forEach((mid) => hideMessage(conversationId, mid));
+    void refreshConversation(conversationId);
+  });
+  s.on('chat:cleared', ({ conversationId, before }) => {
+    clearThreadBefore(conversationId, before);
+    void refreshConversation(conversationId);
+  });
   s.on('receipt', (r) => setReceipt(r.conversationId, r.userId, r));
   s.on('typing', ({ conversationId, userId, typing }) => {
     setTyping(conversationId, userId, typing);

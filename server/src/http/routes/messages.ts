@@ -3,10 +3,9 @@ import { z } from 'zod';
 import { LIMITS } from '@baatcheet/shared';
 import { prisma } from '../../db.js';
 import { badRequest, forbidden, h, notFound, parse } from '../../lib/errors.js';
-import { deleteObject } from '../../lib/storage.js';
 import { toConversation } from '../../realtime/hub.js';
 import { activeMember, anyMember, historyWindow } from '../../services/access.js';
-import { loadMessage, messageInclude, toMessage } from '../../services/messages.js';
+import { loadMessage, messageInclude, purgeMessages, toMessage } from '../../services/messages.js';
 import { me } from '../session.js';
 
 export const messages = Router();
@@ -56,7 +55,10 @@ messages.patch('/:id', h(async (req, res) => {
   res.json(out);
 }));
 
-/** "Delete for me": hides a message (any kind, anyone's) from this user's view of the chat only. */
+/**
+ * "Delete for me": deletes the message for good — from the database and storage — so it disappears for
+ * everyone in the chat. Any member can do it with any message they can see, including call / system lines.
+ */
 messages.post('/:id/hide', h(async (req, res) => {
   const self = me(req).id;
   const msg = await prisma.message.findUnique({ where: { id: req.params.id } });
@@ -65,30 +67,22 @@ messages.post('/:id/hide', h(async (req, res) => {
   const w = historyWindow(member, member.conversation.type === 'GROUP');
   // Only messages this member could see.
   if ((w.gt && msg.createdAt <= w.gt) || (w.lte && msg.createdAt > w.lte)) throw notFound('Message not found');
-  await prisma.hiddenMessage.createMany({ data: [{ userId: self, messageId: msg.id }], skipDuplicates: true });
+  await purgeMessages({ id: msg.id });
+  toConversation(msg.conversationId, 'message:removed', { conversationId: msg.conversationId, messageIds: [msg.id] });
   res.json({ ok: true });
 }));
 
+/** "Delete for everyone": your own messages (or, in a group, an admin) — deleted for good, files too. */
 messages.delete('/:id', h(async (req, res) => {
   const self = me(req).id;
   const { msg, member } = await ownMessage(self, req.params.id);
   const mine = msg.senderId === self;
   const moderator = member.conversation.type === 'GROUP' && member.role !== 'MEMBER';
   if (!mine && !moderator) throw forbidden('You can only delete your own messages');
-  if (msg.kind !== 'TEXT') throw forbidden('This message can’t be deleted');
-  const files = await prisma.messageAttachment.findMany({ where: { messageId: msg.id } });
-  await prisma.$transaction([
-    prisma.messageAttachment.deleteMany({ where: { messageId: msg.id } }),
-    prisma.messageReaction.deleteMany({ where: { messageId: msg.id } }),
-    prisma.message.update({ where: { id: msg.id }, data: { body: null, deletedAt: new Date() } }),
-  ]);
-  await Promise.all(files.map((f) => deleteObject(f.key)));
-  const out = await loadMessage(msg.id);
-  toConversation(msg.conversationId, 'message:updated', out);
-  res.json(out);
+  await purgeMessages({ id: msg.id });
+  toConversation(msg.conversationId, 'message:removed', { conversationId: msg.conversationId, messageIds: [msg.id] });
+  res.json({ ok: true, id: msg.id });
 }));
-
-const emoji = z.string().min(1).max(16).refine((e) => /\p{Extended_Pictographic}/u.test(e), 'Not an emoji');
 
 messages.post('/:id/reactions', h(async (req, res) => {
   const input = parse(z.object({ emoji }), req.body);

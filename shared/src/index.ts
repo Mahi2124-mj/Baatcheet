@@ -233,6 +233,10 @@ export interface ClientToServer {
 export interface ServerToClient {
   'message:new': (m: Message) => void;
   'message:updated': (m: Message) => void;
+  /** Messages deleted for good (removed from the database); drop them from the chat. */
+  'message:removed': (p: { conversationId: string; messageIds: string[] }) => void;
+  /** Every message in the chat up to `before` was deleted for good (Clear chat). */
+  'chat:cleared': (p: { conversationId: string; before: string }) => void;
   'receipt': (r: { conversationId: string; userId: string; deliveredAt?: string; readAt?: string }) => void;
   'typing': (t: { conversationId: string; userId: string; typing: boolean }) => void;
   'presence': (p: { userId: string; online: boolean; lastSeenAt: string | null }) => void;

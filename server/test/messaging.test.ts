@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Message } from '@baatcheet/shared';
 import { befriend, connect, emitAck, once, register, resetDb, sleep, startServer, type TestServer, type TestUser } from './helpers.js';
+import { prisma } from '../src/db.js';
 
 let srv: TestServer;
 beforeAll(async () => {
@@ -91,8 +92,10 @@ describe('direct messages', () => {
     const edited = await a.agent.patch(`/api/messages/${m.body.id}`).send({ body: 'hello' }).expect(200);
     expect(edited.body).toMatchObject({ body: 'hello', editedAt: expect.any(String) });
     await b.agent.delete(`/api/messages/${m.body.id}`).expect(403);
-    const del = await a.agent.delete(`/api/messages/${m.body.id}`).expect(200);
-    expect(del.body).toMatchObject({ body: null, deletedAt: expect.any(String) });
+    await a.agent.delete(`/api/messages/${m.body.id}`).expect(200);
+    // Deleted means deleted: no row left, not even a "This message was deleted" placeholder.
+    expect(await prisma.message.findUnique({ where: { id: m.body.id } })).toBeNull();
+    await a.agent.delete(`/api/messages/${m.body.id}`).expect(404);
   });
 
   it('replies, reactions and search', async () => {
@@ -107,36 +110,44 @@ describe('direct messages', () => {
     expect(found.body.map((x: Message) => x.id)).toEqual([m.body.id]);
   });
 
-  it('"delete for me" hides a message from one person only', async () => {
+  it('"delete for me" deletes the message for good, for everyone', async () => {
     const { a, b, convId } = await pair();
     const first = (await send(a, convId, 'one').expect(201)).body;
     const second = (await send(a, convId, 'two').expect(201)).body;
     const list = async (u: TestUser) => (await u.agent.get(`/api/conversations/${convId}/messages`).expect(200)).body.messages.map((m: { id: string }) => m.id);
-    // b hides a's message (someone else's); outsiders can't.
+    const sa = await connect(srv, a);
+    // b deletes a's message (someone else's); outsiders can't.
     const c = await register(srv);
     await c.agent.post(`/api/messages/${second.id}/hide`).expect(404);
+    const removed = once(sa, 'message:removed');
     await b.agent.post(`/api/messages/${second.id}/hide`).expect(200);
-    await b.agent.post(`/api/messages/${second.id}/hide`).expect(200);
+    expect(await removed).toEqual({ conversationId: convId, messageIds: [second.id] });
+    await b.agent.post(`/api/messages/${second.id}/hide`).expect(404);
+    expect(await prisma.message.findUnique({ where: { id: second.id } })).toBeNull();
     expect(await list(b)).toEqual([first.id]);
-    expect(await list(a)).toEqual([first.id, second.id]);
-    // The chat list preview skips it too.
+    expect(await list(a)).toEqual([first.id]);
     const convs = (await b.agent.get('/api/conversations').expect(200)).body;
     expect(convs.find((x: { id: string }) => x.id === convId).lastMessage.id).toBe(first.id);
+    sa.disconnect();
   });
 
-  it('clears one chat or all chats for one person only', async () => {
+  it('clear chat / clear all chats delete the messages for good, for everyone', async () => {
     const { a, b, convId } = await pair();
     await send(a, convId, 'hello').expect(201);
     const list = async (u: TestUser) => (await u.agent.get(`/api/conversations/${convId}/messages`).expect(200)).body.messages.length;
+    const sa = await connect(srv, a);
+    const cleared = once(sa, 'chat:cleared');
     await b.agent.post(`/api/conversations/${convId}/clear`).expect(200);
+    expect((await cleared).conversationId).toBe(convId);
     expect(await list(b)).toBe(0);
-    expect(await list(a)).toBe(1);
+    expect(await list(a)).toBe(0);
+    expect(await prisma.message.count({ where: { conversationId: convId } })).toBe(0);
     await send(a, convId, 'again').expect(201);
     expect(await list(b)).toBe(1);
     const r = await b.agent.post('/api/conversations/clear-all').expect(200);
-    expect(r.body.count).toBeGreaterThanOrEqual(1);
-    expect(await list(b)).toBe(0);
-    expect(await list(a)).toBe(2);
+    expect(r.body.count).toBe(1);
+    expect(await list(a)).toBe(0);
+    sa.disconnect();
   });
 
   it('read receipts, typing and presence', async () => {

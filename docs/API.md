@@ -72,8 +72,8 @@ curl -b jar http://localhost:8080/api/conversations
 | DELETE | `/:id/members/:userId` | Remove (admins; admins can't remove the owner; only the owner removes admins) or leave (your own id). |
 | PATCH | `/:id/members/:userId` | `{role: ADMIN|MEMBER|OWNER}` (OWNER hands over ownership). |
 | PATCH | `/:id/me` | `{pinned?, archived?, mutedForSeconds?}` — only for you. |
-| POST | `/:id/clear` | Hide earlier messages for you. |
-| POST | `/clear-all` | Clear every chat for you only (others keep their messages). |
+| POST | `/:id/clear` | Delete every message of the chat (that you can see) for good, for everyone — database and files. |
+| POST | `/clear-all` | The same for every chat you are in. |
 | DELETE | `/:id` | Delete a group (owner). |
 | POST | `/:id/invites` | `{maxUses?, expiresInHours?}` → `{code}` (admins). |
 | DELETE | `/:id/invites/:code` | Revoke. |
@@ -89,10 +89,10 @@ Invites: `GET /api/invites/:code` (preview), `POST /api/invites/:code/join`.
 |---|---|---|
 | GET | `/search?q=&conversationId=` | Text search in chats you're in (trigram index). |
 | PATCH | `/:id` | `{body}` — your own text messages, within 48 h. |
-| DELETE | `/:id` | Delete for everyone: sender, or a group admin. Files are deleted from storage. |
+| DELETE | `/:id` | Delete your own message (or, in a group, an admin): removed from the database for good, files too. |
 | POST | `/:id/reactions` | `{emoji}` (one per person; replaces yours). |
 | DELETE | `/:id/reactions` | Remove yours. |
-| POST | `/:id/hide` | "Delete for me": hide any message (also call / system lines) from your own view of the chat. |
+| POST | `/:id/hide` | Delete any message you can see (also call / system lines) for good, for everyone — database and files. |
 
 ## Uploads — `/api/uploads`
 

@@ -8,7 +8,7 @@ import { deleteObject } from '../../lib/storage.js';
 import { joinRoom, leaveRoom, toConversation, toUser } from '../../realtime/hub.js';
 import { activeMember, anyMember, groupAdmin, historyWindow } from '../../services/access.js';
 import { directKey, summaries, summary } from '../../services/conversations.js';
-import { messageInclude, sendMessage, setReceipt, systemMessage, toMessage } from '../../services/messages.js';
+import { messageInclude, purgeMessages, sendMessage, setReceipt, systemMessage, toMessage } from '../../services/messages.js';
 import { notify } from '../../services/notify.js';
 import { blockedEither } from '../../services/users.js';
 import { me, requireVerified } from '../session.js';
@@ -183,17 +183,31 @@ conversations.patch('/:id/me', h(async (req, res) => {
   res.json(await summary(self, m.conversationId));
 }));
 
-/** Clears every chat for this user only (like "Clear all chats" in other apps); others keep their messages. */
+/**
+ * Clear chat: deletes every message of the chat that you can see, for good (database and files), so the
+ * chat is empty for everyone in it.
+ */
+async function clearChat(m: Awaited<ReturnType<typeof anyMember>>) {
+  const before = new Date();
+  const w = historyWindow(m, m.conversation.type === 'GROUP');
+  const count = await purgeMessages({ conversationId: m.conversationId, createdAt: { ...w, lte: w.lte && w.lte < before ? w.lte : before } });
+  toConversation(m.conversationId, 'chat:cleared', { conversationId: m.conversationId, before: before.toISOString() });
+  return count;
+}
+
+/** Clear all chats: every chat you are in, as above. */
 conversations.post('/clear-all', h(async (req, res) => {
-  const r = await prisma.conversationMember.updateMany({ where: { userId: me(req).id }, data: { clearedAt: new Date() } });
-  res.json({ ok: true, count: r.count });
+  const self = me(req).id;
+  const members = await prisma.conversationMember.findMany({ where: { userId: self }, include: { conversation: true } });
+  let count = 0;
+  for (const m of members) count += await clearChat(m);
+  res.json({ ok: true, count, chats: members.length });
 }));
 
 conversations.post('/:id/clear', h(async (req, res) => {
   const self = me(req).id;
   const m = await anyMember(self, req.params.id);
-  await prisma.conversationMember.update({ where: { conversationId_userId: { conversationId: m.conversationId, userId: self } }, data: { clearedAt: new Date() } });
-  res.json({ ok: true });
+  res.json({ ok: true, count: await clearChat(m) });
 }));
 
 conversations.delete('/:id', h(async (req, res) => {

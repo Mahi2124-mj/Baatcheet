@@ -1,6 +1,6 @@
 'use client';
 import { memo, useRef, useState } from 'react';
-import { AlertCircle, Check, CheckCheck, Clock, Copy, EyeOff, FileText, Flag, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, CheckCheck, Clock, Copy, FileText, Flag, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { bytes, clock, cx } from '@/lib/format';
 import type { Message } from '@/lib/types';
 
@@ -137,7 +137,7 @@ interface Props {
   onJump: (id: string) => void;
 }
 
-function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, myId, canDelete, highlight, onReply, onEdit, onDelete, onHide, onReact, onReport, onRetry, onJump }: Props) {
+function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, myId, highlight, onReply, onEdit, onHide, onReact, onReport, onRetry, onJump }: Props) {
   const [menu, setMenu] = useState(false);
   const press = useLongPress(() => setMenu(true));
   const swipe = useSwipeReply(() => onReply(m), m.kind !== 'SYSTEM' && m.kind !== 'CALL' && !m.deletedAt && !(tick === 'pending' || tick === 'failed'));
@@ -172,7 +172,7 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-hover"
               >
                 <Trash2 className="size-4" />
-                Delete for me
+                Delete
               </button>
             </div>
           </>
@@ -276,8 +276,8 @@ function MessageBubbleImpl({ m, mine, senderName, showSender, tick, replyName, m
                 { label: 'Reply', icon: Reply, run: () => onReply(m), show: !deleted },
                 { label: 'Copy', icon: Copy, run: () => void navigator.clipboard?.writeText(m.body ?? ''), show: !deleted && Boolean(m.body) },
                 { label: 'Edit', icon: Pencil, run: () => onEdit(m), show: !deleted && mine && Boolean(m.body) && Date.now() - new Date(m.createdAt).getTime() < 48 * 3600_000 },
-                { label: 'Delete for me', icon: EyeOff, run: () => onHide(m), show: true },
-                { label: 'Delete for everyone', icon: Trash2, run: () => onDelete(m), show: !deleted && canDelete },
+                // Deleting removes the message for good, for everyone in the chat.
+                { label: 'Delete', icon: Trash2, run: () => onHide(m), show: true },
                 { label: 'Report', icon: Flag, run: () => onReport(m), show: !deleted && !mine },
               ]
                 .filter((x) => x.show)

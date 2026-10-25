@@ -5,7 +5,7 @@ import { prisma } from '../db.js';
 import { logger } from '../logger.js';
 import { HttpError, badRequest, forbidden } from '../lib/errors.js';
 import { sendPush } from '../lib/push.js';
-import { downloadUrl, objectSize } from '../lib/storage.js';
+import { deleteObject, downloadUrl, objectSize } from '../lib/storage.js';
 import { toConversation, toUser } from '../realtime/hub.js';
 import { activeMember } from './access.js';
 import { isOnline } from './presence.js';
@@ -185,4 +185,39 @@ export async function setReceipt(userId: string, conversationId: string, message
   const deliveredAt = data.lastDeliveredAt ? at.toISOString() : undefined;
   if (readAt || deliveredAt) toConversation(conversationId, 'receipt', { conversationId, userId, readAt, deliveredAt });
   if (data.lastReadAt) toUser(userId, 'conversation:updated', { conversationId });
+}
+
+/**
+ * Deletes messages for good: the rows (with their reactions), their files in storage and the upload
+ * records. Nothing is kept. Replies that quoted them keep their own text and lose the quote.
+ */
+export async function purgeMessages(where: Prisma.MessageWhereInput): Promise<number> {
+  const rows = await prisma.message.findMany({ where, select: { id: true, attachments: { select: { key: true } } } });
+  if (!rows.length) return 0;
+  const keys = rows.flatMap((r) => r.attachments.map((a) => a.key));
+  // In slices, so a huge "clear all" doesn't build one giant query.
+  for (let i = 0; i < rows.length; i += 500) {
+    await prisma.message.deleteMany({ where: { id: { in: rows.slice(i, i + 500).map((r) => r.id) } } });
+  }
+  if (keys.length) await prisma.upload.deleteMany({ where: { key: { in: keys } } });
+  await Promise.all(keys.map((k) => deleteObject(k).catch((err) => logger.warn({ err, key: k }, 'file delete failed'))));
+  return rows.length;
+}
+
+/**
+ * Files of attachments that no longer exist (left behind by older versions, which only blanked deleted
+ * messages): removed at start-up. Profile and group pictures are not touched.
+ */
+export async function purgeOrphanFiles() {
+  const orphans = await prisma.upload.findMany({
+    where: { purpose: 'attachment', usedAt: { not: null } },
+    select: { key: true },
+  });
+  if (!orphans.length) return;
+  const used = new Set((await prisma.messageAttachment.findMany({ where: { key: { in: orphans.map((o) => o.key) } }, select: { key: true } })).map((a) => a.key));
+  const gone = orphans.filter((o) => !used.has(o.key)).map((o) => o.key);
+  if (!gone.length) return;
+  await prisma.upload.deleteMany({ where: { key: { in: gone } } });
+  await Promise.all(gone.map((k) => deleteObject(k).catch(() => {})));
+  logger.info({ count: gone.length }, 'deleted files of removed messages');
 }

@@ -78,9 +78,9 @@ export function InfoPanel({ conv, onClose, onReportUser }: { conv: Conv; onClose
         <Row icon={Archive} label={conv.archived ? 'Unarchive' : 'Archive chat'} onClick={() => patchMe({ archived: !conv.archived })} />
         <Row
           icon={Trash2}
-          label="Clear chat for me"
+          label="Clear chat"
           onClick={async () => {
-            if (!(await confirm({ title: 'Clear this chat?', text: 'Messages disappear for you only.', confirm: 'Clear', danger: true }))) return;
+            if (!(await confirm({ title: 'Clear this chat?', text: 'Every message and file in this chat is deleted for good, for everyone in it. This can’t be undone.', confirm: 'Clear', danger: true }))) return;
             await run(async () => {
               await api.post(`/conversations/${conv.id}/clear`);
               clearThread(conv.id);

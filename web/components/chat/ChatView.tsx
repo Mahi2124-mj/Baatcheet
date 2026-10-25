@@ -207,7 +207,7 @@ export function ChatView({ id }: { id: string }) {
   );
 
   async function clearChat() {
-    if (!(await confirm({ title: 'Clear this chat?', text: 'All messages disappear for you. The other person keeps theirs.', confirm: 'Clear chat', danger: true }))) return;
+    if (!(await confirm({ title: 'Clear this chat?', text: 'Every message and file in this chat is deleted for good, for everyone in it. This can’t be undone.', confirm: 'Clear chat', danger: true }))) return;
     try {
       await api.post(`/conversations/${id}/clear`);
       clearThread(id);
@@ -217,24 +217,26 @@ export function ChatView({ id }: { id: string }) {
     }
   }
 
+  // Delete = deleted for good: gone from the database and from everyone's chat.
   const hide = useCallback(
     async (m: Message) => {
-      hideMessage(id, m.id);
+      if (!(await confirm({ title: 'Delete this message?', text: 'It is deleted for everyone in this chat, with its files. This can’t be undone.', confirm: 'Delete', danger: true }))) return;
       try {
         await api.post(`/messages/${m.id}/hide`);
+        hideMessage(id, m.id);
       } catch (e) {
         toast(errorText(e), 'error');
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [id],
+    [id, toast, confirm],
   );
 
   const del = useCallback(
     async (m: Message) => {
       if (!(await confirm({ title: 'Delete for everyone?', text: 'The message and its files will be removed for all members.', confirm: 'Delete', danger: true }))) return;
       try {
-        upsertMessages(id, [await api.delete<Message>(`/messages/${m.id}`)]);
+        await api.delete(`/messages/${m.id}`);
+        hideMessage(id, m.id);
       } catch (e) {
         toast(errorText(e), 'error');
       }
